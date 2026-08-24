@@ -1,0 +1,162 @@
+/* REACT FLOW GRAPH OVERRIDES - VERDE PETRÓLEO */
+.react-flow {
+  background-color: var(--bg-primary) !important;
+}
+
+.react-flow__background {
+  background-color: var(--bg-primary) !important;
+}
+
+.react-flow__background-pattern line {
+  stroke: rgba(27, 61, 64, 0.4) !important;
+}
+
+.react-flow__controls {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-md) !important;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: var(--bg-surface) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+  fill: var(--text-secondary) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--bg-card-hover) !important;
+  color: var(--accent-cyan) !important;
+  fill: var(--accent-cyan) !important;
+}
+
+.react-flow__minimap {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* CUSTOM GRAPH NODES */
+.graph-node {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  width: 280px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  position: relative;
+}
+
+.graph-node:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.graph-node.selected {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px var(--accent-glow), var(--shadow-md);
+}
+
+.graph-node.node-bank {
+  border-left: 4px solid var(--bank-color);
+}
+
+.graph-node.node-supplier {
+  border-right: 4px solid var(--supplier-color);
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.node-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.node-type-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.node-bank .node-type-label {
+  color: var(--bank-color);
+}
+
+.node-supplier .node-type-label {
+  color: var(--supplier-color);
+}
+
+.node-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.node-desc {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.node-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.node-amount {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.node-doc {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: var(--accent-teal);
+  border: 2px solid var(--bg-surface);
+}
+
+.react-flow__handle:hover {
+  background: var(--accent-cyan);
+}
+
+/* ANIMATED EDGE PULSE */
+@keyframes edgeFlow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animated-edge {
+  stroke-dasharray: 6 6;
+  animation: edgeFlow 1s linear infinite;
+}
