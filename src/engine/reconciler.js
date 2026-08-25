@@ -58,7 +58,7 @@ export async function reconcile(bankLedgerItems, supplierLedgerItems, options = 
     // Build enriched accounting history for Domínio
     const primaryBank = bItems[0] || {};
     const primarySupplier = sItems[0] || {};
-    let rawSupplierName = primarySupplier.description || primarySupplier.favorecido || primarySupplier.razaoSocial || primaryBank.description || '';
+    let rawSupplierName = primarySupplier.favorecido || primarySupplier.razaoSocial || primarySupplier.description || primaryBank.description || '';
     
     // Clean banking operation prefix from supplier name if present (e.g. "PIX - RECEBIDO 11219021117262 - CECILIA DA SILVA" -> "CECILIA DA SILVA")
     let cleanedSupplierName = rawSupplierName;
@@ -80,7 +80,8 @@ export async function reconcile(bankLedgerItems, supplierLedgerItems, options = 
     if (cleanedSupplierName) {
       const actionPrefix = isIncome ? 'RECEBIMENTO DE' : 'PAGAMENTO A';
       const docSuffix = doc ? ` - NF ${doc}` : '';
-      enrichedHistoricText = `${actionPrefix} ${cleanedSupplierName}${docSuffix}`.toUpperCase().trim();
+      const parcSuffix = primarySupplier.installmentLabel ? ` PARC ${primarySupplier.installmentLabel}` : (primarySupplier.installmentNumber && primarySupplier.installmentNumber !== '1' ? ` PARC ${primarySupplier.installmentNumber}` : '');
+      enrichedHistoricText = `${actionPrefix} ${cleanedSupplierName}${docSuffix}${parcSuffix}`.toUpperCase().trim();
     } else {
       enrichedHistoricText = (primaryBank.description || 'LANCAMENTO CONCILIADO').toUpperCase().trim();
     }
@@ -96,6 +97,9 @@ export async function reconcile(bankLedgerItems, supplierLedgerItems, options = 
       bankItems: bItems,
       supplierItems: sItems,
       ledgerItems: sItems,
+      fiscalInvoiceId: primarySupplier.fiscalInvoiceId || null,
+      installmentNumber: primarySupplier.installmentNumber || null,
+      installmentLabel: primarySupplier.installmentLabel || null,
       historicText: enrichedHistoricText,
       description: enrichedHistoricText,
       debitAccount: primarySupplier.debitAccount || primaryBank.debitAccount || '',

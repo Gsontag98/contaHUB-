@@ -17,6 +17,7 @@ export default function AppLayout({ children }) {
   const getPageTitle = () => {
     switch (activePage) {
       case 'upload': return 'Importação & Mapeamento de Razões';
+      case 'fiscal': return 'Controle Fiscal & XMLs (Notas e Parcelas)';
       case 'graph': return 'Painel de Conciliação Contábil';
       case 'transactions': return 'Lançamentos & Conciliação De-Para';
       case 'mapping': return 'Configuração de Layout da Planilha';

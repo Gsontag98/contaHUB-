@@ -9,6 +9,7 @@ import TableView from './components/Graph/TableView.jsx';
 import ClassicGridView from './components/Graph/ClassicGridView.jsx';
 import ReconciliationGraph from './components/Graph/ReconciliationGraph.jsx';
 import ConciliationTable from './components/Conciliation/ConciliationTable.jsx';
+import FiscalControlPanel from './components/Fiscal/FiscalControlPanel.jsx';
 import MappingPanel from './components/LayoutMapping/MappingPanel.jsx';
 import MatchDetailPanel from './components/DetailPanel/MatchDetailPanel.jsx';
 import OcrPanel from './components/OCR/OcrPanel.jsx';
@@ -57,6 +58,9 @@ export default function App() {
     switch (activePage) {
       case 'upload':
         return <UploadPage />;
+
+      case 'fiscal':
+        return <FiscalControlPanel />;
 
       case 'graph':
         if (!reconciliationResult) return <UploadPage />;

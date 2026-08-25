@@ -17,6 +17,13 @@ import {
 } from '../engine/companyStorage.js';
 import { saveDeParaRule } from '../engine/deParaStorage.js';
 import { matchTransactionRule } from '../engine/rulesEngine.js';
+import { 
+  loadFiscalInvoices, 
+  saveFiscalInvoices, 
+  mergeInvoices, 
+  settleInstallmentInList, 
+  unsettleInstallmentInList 
+} from '../engine/xmlRepository.js';
 
 const initialUser = getActiveSession();
 const initialCompanies = getCompanies();
@@ -108,12 +115,14 @@ const useAppStore = create((set, get) => ({
     // Load isolated data for this company
     const planos = getCompanyPlanos(company.id);
     const rules = getCompanyRules(company.id);
+    const invoices = loadFiscalInvoices(company.id);
 
     set({ 
       activeCompany: company,
       planosList: planos,
       activePlanoId: planos.length > 0 ? planos[0].id : '',
       deParaRules: rules,
+      fiscalInvoices: invoices,
       // Clear working files on company switch for fresh isolation
       bankFile: null,
       supplierFile: null,
@@ -542,12 +551,32 @@ const useAppStore = create((set, get) => ({
       });
     });
 
+    // Settle matched fiscal installments in fiscalInvoices repository
+    const { fiscalInvoices, activeCompany } = get();
+    let updatedFiscal = [...fiscalInvoices];
+    matches.forEach(m => {
+      if (m.fiscalInvoiceId && m.installmentNumber) {
+        const b = (m.bankItems && m.bankItems[0]) || {};
+        updatedFiscal = settleInstallmentInList(updatedFiscal, m.fiscalInvoiceId, m.installmentNumber, {
+          date: m.date || b.date,
+          amount: m.amount || b.amount,
+          bankTxId: b.id || m.id,
+          bankDescription: b.description || 'Pagamento Bancário'
+        });
+      }
+    });
+
+    if (activeCompany && updatedFiscal.length > 0) {
+      saveFiscalInvoices(activeCompany.id, updatedFiscal);
+    }
+
     set({
       transactions: allItems,
+      fiscalInvoices: updatedFiscal,
       activePage: 'transactions'
     });
 
-    addToast(`🚀 ${allItems.length} lançamentos enviados para a aba de Lançamentos De-Para!`, 'success');
+    addToast(`🚀 ${allItems.length} lançamentos enviados para a aba de Lançamentos De-Para com quitação sincronizada!`, 'success');
   },
 
   // Upload Modals state

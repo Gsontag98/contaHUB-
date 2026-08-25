@@ -1,5 +1,6 @@
 import {
   UploadCloud,
+  Receipt,
   Network,
   Sparkles,
   BookOpen,
@@ -31,6 +32,7 @@ export default function Sidebar() {
 
   const navItems = [
     { id: 'upload', label: 'Importar Arquivos', icon: UploadCloud },
+    { id: 'fiscal', label: 'Controle Fiscal & XMLs', icon: Receipt },
     { id: 'graph', label: 'Visão & Auditoria', icon: Network, disabled: !reconciliationResult },
     { id: 'transactions', label: 'Lançamentos (De-Para)', icon: FileSpreadsheet },
     { id: 'mapping', label: 'Configurar Layout', icon: SlidersHorizontal },
