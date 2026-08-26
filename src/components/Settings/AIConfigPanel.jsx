@@ -20,7 +20,8 @@ import {
   saveOcrSettings, 
   getActiveApiKey, 
   listGeminiModels, 
-  reconcileWithAI 
+  reconcileWithAI,
+  testGeminiConnection 
 } from '../../engine/ai.js';
 
 export default function AIConfigPanel() {
@@ -35,6 +36,8 @@ export default function AIConfigPanel() {
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [isRunningAI, setIsRunningAI] = useState(false);
+  const [testingKeyId, setTestingKeyId] = useState(null);
+  const [testResult, setTestResult] = useState(null);
 
   // Load models on mount
   useEffect(() => {
@@ -62,6 +65,39 @@ export default function AIConfigPanel() {
       const models = await listGeminiModels(keyObj.key);
       setAvailableModels(models);
       setLoadingModels(false);
+    }
+  };
+
+  const handleTestConnection = async (keyObj = null) => {
+    const activeKey = keyObj?.key || getActiveApiKey();
+    const keyId = keyObj?.id || settings.activeKeyId || 'active';
+
+    if (!activeKey) {
+      addToast('Nenhuma chave ativa encontrada para testar.', 'warning');
+      return;
+    }
+
+    setTestingKeyId(keyId);
+    setTestResult(null);
+
+    try {
+      const result = await testGeminiConnection(activeKey, modelInput);
+      setTestResult({ keyId, ...result });
+
+      if (result.success) {
+        addToast(`🟢 ${result.message}`, 'success');
+      } else {
+        addToast(`🔴 ${result.message}`, 'error');
+      }
+    } catch (err) {
+      setTestResult({
+        keyId,
+        success: false,
+        message: `Erro: ${err.message}`
+      });
+      addToast(`🔴 Erro ao testar: ${err.message}`, 'error');
+    } finally {
+      setTestingKeyId(null);
     }
   };
 
@@ -334,13 +370,36 @@ export default function AIConfigPanel() {
                       </div>
                     </div>
 
-                    <button
-                      className="card-action-btn delete-btn"
-                      onClick={() => handleDeleteKey(k.id)}
-                      title="Excluir Chave"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleTestConnection(k)}
+                        disabled={testingKeyId === k.id}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title="Testar Conexão com esta chave"
+                      >
+                        {testingKeyId === k.id ? (
+                          <>
+                            <Loader2 className="spin" size={13} />
+                            <span>Testando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={13} color="var(--accent-cyan)" />
+                            <span>Testar Conexão</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        className="card-action-btn delete-btn"
+                        onClick={() => handleDeleteKey(k.id)}
+                        title="Excluir Chave"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 );
               })

@@ -232,3 +232,60 @@ export async function reconcileWithAI(unmappedBankItems, unmappedSupplierItems) 
     return parsed.matches || [];
   });
 }
+
+export async function testGeminiConnection(apiKey, modelName = 'gemini-2.0-flash') {
+  const key = apiKey || getActiveApiKey();
+  if (!key) {
+    return { success: false, message: 'Nenhuma chave de API informada.' };
+  }
+
+  const startTime = performance.now();
+  try {
+    const targetModel = modelName || getPreferredModel() || 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${key}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Responda apenas com a palavra OK' }] }],
+        generationConfig: { maxOutputTokens: 5, temperature: 0.1 }
+      })
+    });
+
+    const latency = Math.round(performance.now() - startTime);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let parsedError = `HTTP ${response.status}`;
+      try {
+        const errJson = JSON.parse(errText);
+        parsedError = errJson.error?.message || parsedError;
+      } catch {}
+      return {
+        success: false,
+        status: response.status,
+        latency,
+        message: `Falha na conexão (${response.status}): ${parsedError}`
+      };
+    }
+
+    const data = await response.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'OK';
+    
+    return {
+      success: true,
+      latency,
+      model: targetModel,
+      reply,
+      message: `Conexão bem-sucedida com o Google Gemini (${targetModel})! Latência: ${latency}ms`
+    };
+  } catch (err) {
+    const latency = Math.round(performance.now() - startTime);
+    return {
+      success: false,
+      latency,
+      message: `Erro de rede ou conexão: ${err.message}`
+    };
+  }
+}
