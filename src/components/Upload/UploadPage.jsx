@@ -43,7 +43,7 @@ export default function UploadPage() {
     }
   };
 
-  const isReady = Boolean(bankFile && supplierFile && bankFile.items?.length > 0 && supplierFile.items?.length > 0);
+  const isReady = Boolean(bankFile && supplierFile && (bankFile.items?.length || 0) > 0 && (supplierFile.items?.length || 0) > 0);
 
   return (
     <div className="upload-page" style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '1200px', margin: '0 auto', paddingBottom: '40px' }}>
@@ -73,9 +73,9 @@ export default function UploadPage() {
                 <span>Arquivos Prontos para Cruzamento</span>
               </div>
               <div className="ready-stats">
-                <span>Banco: <strong>{bankFile.items.length}</strong></span>
+                <span>Banco: <strong>{bankFile.items?.length || 0}</strong></span>
                 <span className="dot-sep">•</span>
-                <span>Fornecedor: <strong>{supplierFile.items.length}</strong></span>
+                <span>Fornecedor: <strong>{supplierFile.items?.length || 0}</strong></span>
               </div>
             </div>
 

@@ -112,7 +112,7 @@ export default function FileDropzone({ type = 'bank' }) {
           <div className="file-info-badge">
             <CheckCircle2 size={16} color="var(--color-success)" />
             <span style={{ fontWeight: 700 }}>{fileData.name}</span>
-            <span style={{ color: 'var(--text-muted)' }}>({fileData.items.length} lançamentos)</span>
+            <span style={{ color: 'var(--text-muted)' }}>({fileData.items?.length || 0} lançamentos)</span>
           </div>
 
           <div className="dropzone-actions" onClick={(e) => e.stopPropagation()}>

@@ -251,10 +251,23 @@ export default function FiscalControlPanel() {
       return;
     }
 
-    // Load into supplier/ledger items in the app store
+    // Load into supplier/ledger items in the app store with complete structure
+    const payload = {
+      name: `XML_Fiscal_${activeCompany?.name || 'Empresa'} (${openItems.length} parcelas)`,
+      size: 0,
+      headers: ['Data Vencimento', 'Documento', 'Fornecedor/Cliente', 'Valor', 'CNPJ'],
+      rows: openItems.map(i => [i.date, i.document, i.description, i.amount, i.cnpj]),
+      mapping: { date: 'Data Vencimento', description: 'Fornecedor/Cliente', amount: 'Valor', document: 'Documento', cnpj: 'CNPJ' },
+      items: openItems,
+      logs: [`[${new Date().toLocaleTimeString()}] Carregado do Repositório Fiscal (${openItems.length} parcelas em aberto)`]
+    };
+
     useAppStore.setState({
+      supplierFile: payload,
+      supplierHeaders: payload.headers,
+      supplierRows: payload.rows,
+      supplierMapping: payload.mapping,
       supplierItems: openItems,
-      supplierFile: { name: `XML_Fiscal_${activeCompany?.name || 'Empresa'} (${openItems.length} parcelas)` },
       activePage: 'upload'
     });
 
