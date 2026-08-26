@@ -10,6 +10,7 @@ import ClassicGridView from './components/Graph/ClassicGridView.jsx';
 import ReconciliationGraph from './components/Graph/ReconciliationGraph.jsx';
 import ConciliationTable from './components/Conciliation/ConciliationTable.jsx';
 import FiscalControlPanel from './components/Fiscal/FiscalControlPanel.jsx';
+import HelpPanel from './components/Help/HelpPanel.jsx';
 import MappingPanel from './components/LayoutMapping/MappingPanel.jsx';
 import MatchDetailPanel from './components/DetailPanel/MatchDetailPanel.jsx';
 import OcrPanel from './components/OCR/OcrPanel.jsx';
@@ -98,6 +99,9 @@ export default function App() {
 
       case 'settings':
         return <AIConfigPanel />;
+
+      case 'help':
+        return <HelpPanel />;
 
       default:
         return <UploadPage />;

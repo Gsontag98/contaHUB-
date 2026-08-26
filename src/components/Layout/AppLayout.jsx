@@ -26,6 +26,7 @@ export default function AppLayout({ children }) {
       case 'rules': return 'Regras De-Para Contábeis';
       case 'report': return 'Relatório Executivo & Exportação Domínio';
       case 'settings': return 'Configurações de Inteligência Artificial';
+      case 'help': return 'Central de Ajuda & Manual do Sistema';
       default: return 'contaHUB';
     }
   };

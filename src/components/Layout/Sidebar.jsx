@@ -1,6 +1,7 @@
 import {
   UploadCloud,
   Receipt,
+  HelpCircle,
   Network,
   Sparkles,
   BookOpen,
@@ -39,7 +40,8 @@ export default function Sidebar() {
     { id: 'ocr', label: 'OCR Extratos & PDFs', icon: Sparkles },
     { id: 'plano', label: 'Plano de Contas', icon: BookOpen },
     { id: 'rules', label: 'Regras De-Para', icon: Settings },
-    { id: 'settings', label: 'Configurações IA', icon: Cpu }
+    { id: 'settings', label: 'Configurações IA', icon: Cpu },
+    { id: 'help', label: 'Ajuda & Manual', icon: HelpCircle }
   ];
 
   return (
