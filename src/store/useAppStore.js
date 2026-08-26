@@ -464,6 +464,48 @@ const useAppStore = create((set, get) => ({
     addToast('Vínculo desfeito com sucesso.', 'info');
   },
 
+  // Fiscal Invoices & Multi-Period XML Repository
+  fiscalInvoices: [],
+  setFiscalInvoices: (fiscalInvoices) => {
+    const { activeCompany } = get();
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, fiscalInvoices);
+    set({ fiscalInvoices });
+  },
+  addFiscalInvoices: (incomingList) => {
+    const { fiscalInvoices, activeCompany, addToast } = get();
+    const updated = mergeInvoices(fiscalInvoices, incomingList);
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, updated);
+    set({ fiscalInvoices: updated });
+    addToast(`📄 ${incomingList.length} notas fiscais importadas e consolidadas no repositório!`, 'success');
+  },
+  deleteFiscalInvoice: (invoiceId) => {
+    const { fiscalInvoices, activeCompany, addToast } = get();
+    const updated = fiscalInvoices.filter(i => i.id !== invoiceId);
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, updated);
+    set({ fiscalInvoices: updated });
+    addToast('Nota fiscal removida do repositório.', 'info');
+  },
+  clearFiscalInvoices: () => {
+    const { activeCompany, addToast } = get();
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, []);
+    set({ fiscalInvoices: [] });
+    addToast('Repositório fiscal esvaziado.', 'info');
+  },
+  settleFiscalInstallment: (invoiceId, installmentNumber, settlementData) => {
+    const { fiscalInvoices, activeCompany, addToast } = get();
+    const updated = settleInstallmentInList(fiscalInvoices, invoiceId, installmentNumber, settlementData);
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, updated);
+    set({ fiscalInvoices: updated });
+    addToast('✅ Parcela marcada como quitada pelo banco!', 'success');
+  },
+  unsettleFiscalInstallment: (invoiceId, installmentNumber) => {
+    const { fiscalInvoices, activeCompany, addToast } = get();
+    const updated = unsettleInstallmentInList(fiscalInvoices, invoiceId, installmentNumber);
+    if (activeCompany) saveFiscalInvoices(activeCompany.id, updated);
+    set({ fiscalInvoices: updated });
+    addToast('Parcela reaberta como pendente.', 'info');
+  },
+
   // De-Para Transactions Table (Domínio Importer flow)
   transactions: [],
   setTransactions: (transactions) => set({ transactions }),
