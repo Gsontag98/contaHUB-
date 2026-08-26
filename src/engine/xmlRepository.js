@@ -60,15 +60,18 @@ export function parseXmlDocument(xmlText, activeCompanyCnpj = '') {
   if (!xmlText || typeof xmlText !== 'string') return null;
 
   try {
-    // If DOMParser is available (Browser / Electron)
+    const cleanActiveCnpj = cleanCnpj(activeCompanyCnpj);
+
+    // -------------------------------------------------------------
+    // 1. Browser / DOMParser Mode
+    // -------------------------------------------------------------
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(xmlText, 'text/xml');
       const parserError = doc.querySelector('parsererror');
+      
       if (!parserError) {
-        const cleanActiveCnpj = cleanCnpj(activeCompanyCnpj);
-
-        // 1. Detect NF-e
+        // 1.1 NF-e
         const infNFe = doc.querySelector('infNFe');
         if (infNFe) {
           const chNFe = infNFe.getAttribute('Id')?.replace(/^NFe/i, '') || doc.querySelector('protNFe > infProt > chNFe')?.textContent?.trim() || '';
@@ -158,7 +161,7 @@ export function parseXmlDocument(xmlText, activeCompanyCnpj = '') {
           };
         }
 
-        // 2. Detect NFS-e
+        // 1.2 NFS-e
         const infNfse = doc.querySelector('InfNfse, infNfse, CompNfse, Rps');
         if (infNfse) {
           const nNF = doc.querySelector('Numero, nNF, IdentificacaoRps > Numero')?.textContent?.trim() || 'S/N';
@@ -214,11 +217,56 @@ export function parseXmlDocument(xmlText, activeCompanyCnpj = '') {
             rawXml: xmlText
           };
         }
+
+        // 1.3 CT-e
+        const infCte = doc.querySelector('infCte');
+        if (infCte) {
+          const chCTe = infCte.getAttribute('Id')?.replace(/^CTe/i, '') || '';
+          const nCT = doc.querySelector('ide > nCT')?.textContent?.trim() || '';
+          const dhEmi = doc.querySelector('ide > dhEmi')?.textContent?.trim() || '';
+          const issueDate = dhEmi ? dhEmi.split('T')[0] : new Date().toISOString().split('T')[0];
+
+          const emitCnpj = cleanCnpj(doc.querySelector('emit > CNPJ')?.textContent?.trim() || '');
+          const emitNome = doc.querySelector('emit > xNome')?.textContent?.trim() || 'TRANSPORTADORA';
+          const vTPrest = parseFloat(doc.querySelector('vPrest > vTPrest')?.textContent?.trim() || '0') || 0;
+
+          const invoiceId = chCTe || `cte_${emitCnpj}_${nCT}_${issueDate}`;
+
+          return {
+            id: invoiceId,
+            chNFe: chCTe,
+            number: nCT,
+            series: 'CTE',
+            issueDate,
+            type: 'CTE_FRETE',
+            partnerName: emitNome,
+            partnerCnpj: emitCnpj,
+            totalAmount: vTPrest,
+            paidAmount: 0,
+            remainingAmount: vTPrest,
+            status: 'ABERTO',
+            installments: [{
+              id: `inst_${invoiceId}_unica_0`,
+              number: '1',
+              label: 'Única (1/1)',
+              dueDate: issueDate,
+              amount: vTPrest,
+              status: 'ABERTO',
+              settlementDate: null,
+              bankTxId: null,
+              bankDescription: null,
+              settledAmount: 0
+            }],
+            xmlType: 'CT-e',
+            rawXml: xmlText
+          };
+        }
       }
     }
 
-    // Node.js / Regex fallback
-    const cleanActiveCnpj = cleanCnpj(activeCompanyCnpj);
+    // -------------------------------------------------------------
+    // 2. Node / Regex Fallback Mode
+    // -------------------------------------------------------------
     const nNF = getXmlTag(xmlText, 'nNF');
     if (nNF) {
       const chMatch = /Id="NFe([0-9]{44})"/i.exec(xmlText) || /<chNFe>([0-9]{44})<\/chNFe>/i.exec(xmlText);
@@ -307,111 +355,6 @@ export function parseXmlDocument(xmlText, activeCompanyCnpj = '') {
       };
     }
 
-    // 2. Detect NFS-e (Serviços)
-    const infNfse = doc.querySelector('InfNfse, infNfse, CompNfse, Rps');
-    if (infNfse) {
-      const nNF = doc.querySelector('Numero, nNF, IdentificacaoRps > Numero')?.textContent?.trim() || 'S/N';
-      const dhEmi = doc.querySelector('DataEmissao, dhEmi, dEmi')?.textContent?.trim() || '';
-      const issueDate = dhEmi ? dhEmi.split('T')[0] : new Date().toISOString().split('T')[0];
-
-      const prestadorCnpj = cleanCnpj(doc.querySelector('PrestadorServico > IdentificacaoPrestador > Cnpj, Prestador > Cnpj, emit > CNPJ')?.textContent?.trim() || '');
-      const prestadorNome = doc.querySelector('PrestadorServico > RazaoSocial, Prestador > RazaoSocial, emit > xNome')?.textContent?.trim() || 'PRESTADOR DE SERVIÇO';
-
-      const tomadorCnpj = cleanCnpj(doc.querySelector('TomadorServico > IdentificacaoTomador > CpfCnpj > Cnpj, Tomador > Cnpj, dest > CNPJ')?.textContent?.trim() || '');
-      const tomadorNome = doc.querySelector('TomadorServico > RazaoSocial, Tomador > RazaoSocial, dest > xNome')?.textContent?.trim() || 'TOMADOR DE SERVIÇO';
-
-      const vServ = parseFloat(doc.querySelector('ValoresNfse > ValorLiquidoNfse, Valores > ValorLiquido, ValorServicos, vNF')?.textContent?.trim() || '0') || 0;
-
-      let type = 'SERVICO_TOMADO';
-      let partnerName = prestadorNome;
-      let partnerCnpj = prestadorCnpj;
-
-      if (cleanActiveCnpj && prestadorCnpj === cleanActiveCnpj) {
-        type = 'SERVICO_PRESTADO';
-        partnerName = tomadorNome;
-        partnerCnpj = tomadorCnpj;
-      }
-
-      const invoiceId = `nfse_${prestadorCnpj || tomadorCnpj}_${nNF}_${issueDate}`;
-
-      return {
-        id: invoiceId,
-        chNFe: '',
-        number: nNF,
-        series: 'NFS',
-        issueDate,
-        type,
-        partnerName,
-        partnerCnpj,
-        totalAmount: vServ,
-        paidAmount: 0,
-        remainingAmount: vServ,
-        status: 'ABERTO',
-        installments: [
-          {
-            id: `inst_${invoiceId}_unica_0`,
-            number: '1',
-            label: 'Única (1/1)',
-            dueDate: issueDate,
-            amount: vServ,
-            status: 'ABERTO',
-            settlementDate: null,
-            bankTxId: null,
-            bankDescription: null,
-            settledAmount: 0
-          }
-        ],
-        xmlType: 'NFS-e',
-        rawXml: xmlText
-      };
-    }
-
-    // 3. Detect CT-e (Conhecimento de Transporte)
-    const infCte = doc.querySelector('infCte');
-    if (infCte) {
-      const chCTe = infCte.getAttribute('Id')?.replace(/^CTe/i, '') || '';
-      const nCT = doc.querySelector('ide > nCT')?.textContent?.trim() || '';
-      const dhEmi = doc.querySelector('ide > dhEmi')?.textContent?.trim() || '';
-      const issueDate = dhEmi ? dhEmi.split('T')[0] : new Date().toISOString().split('T')[0];
-
-      const emitCnpj = cleanCnpj(doc.querySelector('emit > CNPJ')?.textContent?.trim() || '');
-      const emitNome = doc.querySelector('emit > xNome')?.textContent?.trim() || 'TRANSPORTADORA';
-      const vTPrest = parseFloat(doc.querySelector('vPrest > vTPrest')?.textContent?.trim() || '0') || 0;
-
-      const invoiceId = chCTe || `cte_${emitCnpj}_${nCT}_${issueDate}`;
-
-      return {
-        id: invoiceId,
-        chNFe: chCTe,
-        number: nCT,
-        series: 'CTE',
-        issueDate,
-        type: 'CTE_FRETE',
-        partnerName: emitNome,
-        partnerCnpj: emitCnpj,
-        totalAmount: vTPrest,
-        paidAmount: 0,
-        remainingAmount: vTPrest,
-        status: 'ABERTO',
-        installments: [
-          {
-            id: `inst_${invoiceId}_unica_0`,
-            number: '1',
-            label: 'Única (1/1)',
-            dueDate: issueDate,
-            amount: vTPrest,
-            status: 'ABERTO',
-            settlementDate: null,
-            bankTxId: null,
-            bankDescription: null,
-            settledAmount: 0
-          }
-        ],
-        xmlType: 'CT-e',
-        rawXml: xmlText
-      };
-    }
-
     return null;
   } catch (err) {
     console.error('Erro ao fazer parse de XML:', err);
@@ -423,20 +366,25 @@ export function parseMultipleXmlFiles(files, activeCompanyCnpj = '') {
   return new Promise((resolve) => {
     const results = [];
     let processed = 0;
-    const total = files.length;
+    const fileArray = Array.from(files || []);
+    const total = fileArray.length;
 
     if (total === 0) {
       resolve([]);
       return;
     }
 
-    Array.from(files).forEach((file) => {
+    fileArray.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target.result;
-        const parsed = parseXmlDocument(text, activeCompanyCnpj);
-        if (parsed) {
-          results.push(parsed);
+        try {
+          const text = e.target.result;
+          const parsed = parseXmlDocument(text, activeCompanyCnpj);
+          if (parsed) {
+            results.push(parsed);
+          }
+        } catch (err) {
+          console.warn('Erro ao ler arquivo XML:', file.name, err);
         }
         processed++;
         if (processed === total) {
@@ -462,17 +410,16 @@ export function mergeInvoices(existingInvoices = [], incomingInvoices = []) {
   const invoiceMap = new Map();
 
   // Load existing
-  existingInvoices.forEach(inv => {
+  (existingInvoices || []).forEach(inv => {
     invoiceMap.set(inv.id, inv);
   });
 
   // Merge incoming
-  incomingInvoices.forEach(inc => {
+  (incomingInvoices || []).forEach(inc => {
     if (!invoiceMap.has(inc.id)) {
       invoiceMap.set(inc.id, inc);
     } else {
       const existing = invoiceMap.get(inc.id);
-      // Merge installments keeping settled status
       const updatedInstallments = inc.installments.map((inst, idx) => {
         const exInst = existing.installments?.[idx] || existing.installments?.find(i => i.number === inst.number);
         if (exInst && exInst.status === 'PAGO') {
@@ -512,11 +459,11 @@ export function mergeInvoices(existingInvoices = [], incomingInvoices = []) {
 /**
  * Marks a specific installment as settled by a bank payment.
  */
-export function settleInstallmentInList(invoices, invoiceId, installmentNumber, settlementData) {
-  return invoices.map(inv => {
+export function settleInstallmentInList(invoices = [], invoiceId, installmentNumber, settlementData) {
+  return (invoices || []).map(inv => {
     if (inv.id !== invoiceId) return inv;
 
-    const updatedInstallments = inv.installments.map(inst => {
+    const updatedInstallments = (inv.installments || []).map(inst => {
       if (inst.number === String(installmentNumber) || inst.id === String(installmentNumber)) {
         return {
           ...inst,
@@ -551,11 +498,11 @@ export function settleInstallmentInList(invoices, invoiceId, installmentNumber, 
 /**
  * Unsettles an installment, resetting it to open state.
  */
-export function unsettleInstallmentInList(invoices, invoiceId, installmentNumber) {
-  return invoices.map(inv => {
+export function unsettleInstallmentInList(invoices = [], invoiceId, installmentNumber) {
+  return (invoices || []).map(inv => {
     if (inv.id !== invoiceId) return inv;
 
-    const updatedInstallments = inv.installments.map(inst => {
+    const updatedInstallments = (inv.installments || []).map(inst => {
       if (inst.number === String(installmentNumber) || inst.id === String(installmentNumber)) {
         return {
           ...inst,
@@ -590,12 +537,12 @@ export function unsettleInstallmentInList(invoices, invoiceId, installmentNumber
 /**
  * Exports the fiscal ledger and installments to Excel.
  */
-export function exportFiscalLedgerToExcel(invoices, companyName = 'empresa') {
+export function exportFiscalLedgerToExcel(invoices = [], companyName = 'empresa') {
   if (!invoices || invoices.length === 0) return;
 
   const rows = [];
   invoices.forEach(inv => {
-    inv.installments.forEach(inst => {
+    (inv.installments || []).forEach(inst => {
       rows.push({
         'Tipo': inv.type === 'ENTRADA' ? 'Compra (Entrada)' : (inv.type === 'SAIDA' ? 'Venda (Saída)' : 'Serviço'),
         'Número NF': inv.number,
@@ -625,6 +572,6 @@ export function exportFiscalLedgerToExcel(invoices, companyName = 'empresa') {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'NOTAS_E_PARCELAS');
 
-  const cleanName = companyName.toLowerCase().replace(/[^a-z0-9]/gi, '_');
+  const cleanName = (companyName || 'empresa').toLowerCase().replace(/[^a-z0-9]/gi, '_');
   XLSX.writeFile(workbook, `contahub_controle_fiscal_${cleanName}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
