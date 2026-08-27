@@ -185,11 +185,27 @@ const useAppStore = create((set, get) => ({
   // Advanced De-Para Rules Management (Isolated per company)
   deParaRules: [],
   setDeParaRules: (rules) => {
-    const { activeCompany } = get();
+    const { activeCompany, transactions } = get();
     if (activeCompany) {
       saveCompanyRules(activeCompany.id, rules);
     }
-    set({ deParaRules: rules });
+
+    const updatedTransactions = (transactions || []).map(tx => {
+      const m = matchTransactionRule(tx.description, tx.value, rules, '', tx.historicText || '', [tx.date, tx.description, tx.value]);
+      if (m) {
+        return {
+          ...tx,
+          debitAccount: m.debitAccount || tx.debitAccount,
+          creditAccount: m.creditAccount || tx.creditAccount,
+          historicCode: m.historicCode || tx.historicCode,
+          historicText: m.historicText || tx.historicText,
+          isSuggested: true
+        };
+      }
+      return tx;
+    });
+
+    set({ deParaRules: rules, transactions: updatedTransactions });
   },
   addDeParaRule: (rule) => {
     const { activeCompany, deParaRules, transactions } = get();

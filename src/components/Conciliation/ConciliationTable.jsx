@@ -233,42 +233,28 @@ export default function ConciliationTable() {
       return;
     }
 
+    const terms = quickRulePattern.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
     const newRule = {
       id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      pattern: quickRulePattern.toUpperCase().trim(),
+      name: terms.join(' + '),
+      mustContainAll: terms,
+      pattern: terms.join(','),
       ruleType: quickRuleType,
       valueCondition: quickRuleValueCondition,
+      signalCondition: quickRuleValueCondition === 'negative' ? 'debit_only' : (quickRuleValueCondition === 'positive' ? 'credit_only' : 'any'),
       targetAccount: quickRuleType === 'dynamic' ? quickRuleTargetAccount : '',
       debitAccount: quickRuleType === 'fixed' ? quickRuleDebit : '',
       creditAccount: quickRuleType === 'fixed' ? quickRuleCredit : '',
-      historicCode: quickRuleHistCode,
-      historicText: quickRuleHistText
+      historicCode: quickRuleHistCode || '10',
+      historicTextTemplate: quickRuleHistText || '',
+      historicText: quickRuleHistText || ''
     };
 
     addDeParaRule(newRule);
-
-    // Auto-apply newly created rule to open transactions
-    const updated = transactions.map(tx => {
-      if (tx.debitAccount && tx.creditAccount && !tx.isSuggested) return tx;
-      const numVal = Number(tx.value || 0);
-      const match = matchTransactionRule(tx.description, numVal, [newRule], defaultCounterpart, tx.description, [tx.date, tx.description, numVal]);
-      if (match) {
-        return {
-          ...tx,
-          debitAccount: match.debitAccount || tx.debitAccount,
-          creditAccount: match.creditAccount || tx.creditAccount,
-          historicCode: match.historicCode || tx.historicCode,
-          historicText: match.historicText || tx.historicText,
-          isSuggested: true
-        };
-      }
-      return tx;
-    });
-
-    setTransactions(updated);
     setQuickRuleTx(null);
     setQuickRulePattern('');
-    addToast('Regra De-Para salva e aplicada aos lançamentos correspondentes!', 'success');
+    addToast('⚡ Regra De-Para inteligente criada e sincronizada em tempo real!', 'success');
   };
 
   // Filter and search transactions
