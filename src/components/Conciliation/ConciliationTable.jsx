@@ -69,11 +69,18 @@ export default function ConciliationTable() {
   const [activeCell, setActiveCell] = useState(null);
   const [autoSearch, setAutoSearch] = useState('');
 
-  // Quick rule modal overlay state
+  // Quick rule modal overlay state (Advanced & Didactic)
   const [quickRuleTx, setQuickRuleTx] = useState(null);
-  const [quickRulePattern, setQuickRulePattern] = useState('');
+  const [quickRuleName, setQuickRuleName] = useState('');
+  const [quickRuleMustAll, setQuickRuleMustAll] = useState('');
+  const [quickRuleMayAny, setQuickRuleMayAny] = useState('');
+  const [quickRuleMustNot, setQuickRuleMustNot] = useState('');
+  const [quickRuleValueType, setQuickRuleValueType] = useState('any'); // 'any' | 'exact' | 'range' | 'greater' | 'less'
+  const [quickRuleExactValue, setQuickRuleExactValue] = useState('');
+  const [quickRuleMinValue, setQuickRuleMinValue] = useState('');
+  const [quickRuleMaxValue, setQuickRuleMaxValue] = useState('');
+  const [quickRuleSignalCondition, setQuickRuleSignalCondition] = useState('any');
   const [quickRuleType, setQuickRuleType] = useState('dynamic');
-  const [quickRuleValueCondition, setQuickRuleValueCondition] = useState('any');
   const [quickRuleTargetAccount, setQuickRuleTargetAccount] = useState('');
   const [quickRuleDebit, setQuickRuleDebit] = useState('');
   const [quickRuleCredit, setQuickRuleCredit] = useState('');
@@ -216,45 +223,68 @@ export default function ConciliationTable() {
   };
 
   const startQuickRule = (tx) => {
+    const suggested = suggestPattern(tx.description);
+    const isDeb = tx.value < 0;
+    const numVal = Math.abs(tx.value || 0);
+
     setQuickRuleTx(tx);
-    setQuickRulePattern(suggestPattern(tx.description));
+    setQuickRuleName(suggested || tx.description);
+    setQuickRuleMustAll(suggested || tx.description);
+    setQuickRuleMayAny('');
+    setQuickRuleMustNot('');
+    setQuickRuleValueType('any');
+    setQuickRuleExactValue(numVal ? String(numVal.toFixed(2)) : '');
+    setQuickRuleMinValue('');
+    setQuickRuleMaxValue('');
+    setQuickRuleSignalCondition(isDeb ? 'debit_only' : 'credit_only');
     setQuickRuleType('dynamic');
-    setQuickRuleValueCondition(tx.value < 0 ? 'negative' : 'positive');
-    setQuickRuleTargetAccount(tx.value < 0 ? (tx.debitAccount || '') : (tx.creditAccount || ''));
+    setQuickRuleTargetAccount(isDeb ? (tx.debitAccount || '') : (tx.creditAccount || ''));
     setQuickRuleDebit(tx.debitAccount || '');
     setQuickRuleCredit(tx.creditAccount || '');
     setQuickRuleHistCode(tx.historicCode || '10');
     setQuickRuleHistText(tx.historicText || tx.description || '');
   };
 
+  const insertQuickRuleTag = (tag) => {
+    setQuickRuleHistText(prev => prev ? `${prev} ${tag}` : tag);
+  };
+
   const handleQuickRuleSave = () => {
-    if (!quickRulePattern.trim()) {
-      addToast('O termo/palavra-chave da regra não pode ser vazio.', 'warning');
+    if (!quickRuleMustAll.trim() && !quickRuleMayAny.trim()) {
+      addToast('Informe ao menos um termo de busca (E ou OU) para a regra.', 'warning');
       return;
     }
 
-    const terms = quickRulePattern.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    const mustAll = quickRuleMustAll.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    const mayAny = quickRuleMayAny.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    const mustNot = quickRuleMustNot.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 
     const newRule = {
       id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: terms.join(' + '),
-      mustContainAll: terms,
-      pattern: terms.join(','),
+      name: quickRuleName.trim() || (mustAll.length > 0 ? mustAll.join(' + ') : 'Nova Regra'),
+      mustContainAll: mustAll,
+      mayContainAny: mayAny,
+      mustNotContain: mustNot,
+      pattern: mustAll.join(','),
+      orPattern: mayAny.join(','),
+      notPattern: mustNot.join(','),
+      valueType: quickRuleValueType,
+      exactValue: quickRuleExactValue ? parseFloat(quickRuleExactValue) : null,
+      minValue: quickRuleMinValue ? parseFloat(quickRuleMinValue) : null,
+      maxValue: quickRuleMaxValue ? parseFloat(quickRuleMaxValue) : null,
+      signalCondition: quickRuleSignalCondition,
       ruleType: quickRuleType,
-      valueCondition: quickRuleValueCondition,
-      signalCondition: quickRuleValueCondition === 'negative' ? 'debit_only' : (quickRuleValueCondition === 'positive' ? 'credit_only' : 'any'),
-      targetAccount: quickRuleType === 'dynamic' ? quickRuleTargetAccount : '',
-      debitAccount: quickRuleType === 'fixed' ? quickRuleDebit : '',
-      creditAccount: quickRuleType === 'fixed' ? quickRuleCredit : '',
+      targetAccount: quickRuleType === 'dynamic' ? quickRuleTargetAccount.trim() : '',
+      debitAccount: quickRuleType === 'fixed' ? quickRuleDebit.trim() : '',
+      creditAccount: quickRuleType === 'fixed' ? quickRuleCredit.trim() : '',
       historicCode: quickRuleHistCode || '10',
-      historicTextTemplate: quickRuleHistText || '',
-      historicText: quickRuleHistText || ''
+      historicTextTemplate: quickRuleHistText.trim() || '',
+      historicText: quickRuleHistText.trim() || ''
     };
 
     addDeParaRule(newRule);
     setQuickRuleTx(null);
-    setQuickRulePattern('');
-    addToast('⚡ Regra De-Para inteligente criada e sincronizada em tempo real!', 'success');
+    addToast('⚡ Regra De-Para inteligente criada e aplicada aos lançamentos correspondentes!', 'success');
   };
 
   // Filter and search transactions
@@ -843,136 +873,299 @@ export default function ConciliationTable() {
         )}
       </div>
 
-      {/* Quick Rule Modal Window (Domínio Importer Style) */}
+      {/* Quick Rule Modal Window (Advanced & Didactic) */}
       {quickRuleTx && (
         <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '520px' }}>
-            <div className="modal-header">
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
-                <Sparkles size={18} color="var(--accent-cyan)" />
-                Criar Regra De-Para ({activeCompany?.name})
-              </h3>
+          <div className="modal-content glass-card" style={{ maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', border: '2px solid var(--accent-cyan)' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={20} color="var(--accent-cyan)" />
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                  Criar Regra De-Para Inteligente ({activeCompany?.name || 'Empresa'})
+                </h3>
+              </div>
               <button onClick={() => setQuickRuleTx(null)} className="btn-outline btn-sm" style={{ padding: '4px 8px' }}>
                 <X size={16} />
               </button>
             </div>
 
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '18px 0' }}>
+              
+              {/* Nome da Regra */}
               <div className="form-group" style={{ margin: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>
-                  Termo / Palavra-Chave a Corresponder:
+                  Nome da Regra:
                 </label>
                 <input
                   type="text"
                   className="form-input"
-                  value={quickRulePattern}
-                  onChange={(e) => setQuickRulePattern(e.target.value)}
-                  placeholder="Ex: TARIFA, PIX KALUNGA..."
+                  value={quickRuleName}
+                  onChange={(e) => setQuickRuleName(e.target.value)}
+                  placeholder="Ex: Pagamento PIX Fornecedor..."
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Tipo de Regra:</label>
-                  <select
-                    className="form-input"
-                    value={quickRuleType}
-                    onChange={(e) => setQuickRuleType(e.target.value)}
-                  >
-                    <option value="dynamic">Dinâmica (Contrapartida)</option>
-                    <option value="fixed">Fixa (Débito e Crédito)</option>
-                  </select>
+              {/* BLOCO 1: LÓGICA E, OU, NÃO */}
+              <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Tag size={14} /> 1. Termos de Busca (E, OU, NÃO)
                 </div>
 
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Filtro de Valor:</label>
-                  <select
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <label className="form-label" style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-success)' }}>
+                      🟢 Contém TODAS as palavras (E / AND)
+                    </label>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Separe por vírgula</span>
+                  </div>
+                  <input
+                    type="text"
                     className="form-input"
-                    value={quickRuleValueCondition}
-                    onChange={(e) => setQuickRuleValueCondition(e.target.value)}
-                  >
-                    <option value="any">Qualquer Valor</option>
-                    <option value="negative">Apenas Saídas (-)</option>
-                    <option value="positive">Apenas Entradas (+)</option>
-                  </select>
+                    value={quickRuleMustAll}
+                    onChange={(e) => setQuickRuleMustAll(e.target.value)}
+                    placeholder="Ex: PIX, RECEBIDO"
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <label className="form-label" style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                      🔵 Contém QUALQUER uma (OU / OR - Opcional)
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={quickRuleMayAny}
+                    onChange={(e) => setQuickRuleMayAny(e.target.value)}
+                    placeholder="Ex: TRANSFERENCIA, TED, DOC"
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <label className="form-label" style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-danger)' }}>
+                      🔴 NÃO PODE Conter (NÃO / NOT - Exceções)
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={quickRuleMustNot}
+                    onChange={(e) => setQuickRuleMustNot(e.target.value)}
+                    placeholder="Ex: ESTORNO, CANCELADO"
+                  />
                 </div>
               </div>
 
-              {quickRuleType === 'dynamic' ? (
-                <div className="form-group" style={{ margin: 0, position: 'relative' }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>
-                    Conta Contábil Alvo (Plano de Contas):
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Digite o código ou nome da conta..."
-                    value={quickRuleTargetAccount}
-                    onChange={(e) => {
-                      setQuickRuleTargetAccount(e.target.value);
-                      setAutoSearch(e.target.value);
-                    }}
-                    onFocus={() => {
-                      setAutoSearch(quickRuleTargetAccount);
-                    }}
-                    list="plano-contas-list"
-                  />
+              {/* BLOCO 2: CONDIÇÕES DE VALOR & SINAL */}
+              <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-teal)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <DollarSign size={14} /> 2. Condição de Valor & Sinal
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Conta Débito:</label>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Condição de Valor:</label>
+                    <select
+                      className="form-input"
+                      value={quickRuleValueType}
+                      onChange={(e) => setQuickRuleValueType(e.target.value)}
+                    >
+                      <option value="any">Qualquer Valor</option>
+                      <option value="exact">Valor Exato (== R$)</option>
+                      <option value="range">Faixa (Min e Max)</option>
+                      <option value="greater">Maior que (&gt; R$)</option>
+                      <option value="less">Menor que (&lt; R$)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Sinal / Movimento:</label>
+                    <select
+                      className="form-input"
+                      value={quickRuleSignalCondition}
+                      onChange={(e) => setQuickRuleSignalCondition(e.target.value)}
+                    >
+                      <option value="any">Qualquer Movimento (+ / -)</option>
+                      <option value="debit_only">Apenas Saídas (Débito [-])</option>
+                      <option value="credit_only">Apenas Entradas (Crédito [+])</option>
+                    </select>
+                  </div>
+                </div>
+
+                {quickRuleValueType === 'exact' && (
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.76rem' }}>Valor Exato (R$):</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="form-input"
+                      value={quickRuleExactValue}
+                      onChange={(e) => setQuickRuleExactValue(e.target.value)}
+                      placeholder="Ex: 49.90"
+                    />
+                  </div>
+                )}
+
+                {quickRuleValueType === 'range' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.76rem' }}>Valor Mínimo (R$):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-input"
+                        value={quickRuleMinValue}
+                        onChange={(e) => setQuickRuleMinValue(e.target.value)}
+                        placeholder="Ex: 10.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.76rem' }}>Valor Máximo (R$):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-input"
+                        value={quickRuleMaxValue}
+                        onChange={(e) => setQuickRuleMaxValue(e.target.value)}
+                        placeholder="Ex: 100.00"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* BLOCO 3: CONTAS CONTÁBEIS */}
+              <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-petroleum)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <BookOpen size={14} /> 3. Contas Contábeis (Plano de Contas)
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', fontSize: '0.76rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="quickRuleTypeRadio"
+                        checked={quickRuleType === 'dynamic'}
+                        onChange={() => setQuickRuleType('dynamic')}
+                      />
+                      <span>Dinâmica</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="quickRuleTypeRadio"
+                        checked={quickRuleType === 'fixed'}
+                        onChange={() => setQuickRuleType('fixed')}
+                      />
+                      <span>Fixa (D e C)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {quickRuleType === 'dynamic' ? (
+                  <div className="form-group" style={{ margin: 0, position: 'relative' }}>
+                    <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>
+                      Conta Contábil Alvo (Despesa / Fornecedor / Receita):
+                    </label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Código Débito..."
-                      value={quickRuleDebit}
-                      onChange={(e) => setQuickRuleDebit(e.target.value)}
+                      placeholder="Digite o código ou nome da conta..."
+                      value={quickRuleTargetAccount}
+                      onChange={(e) => {
+                        setQuickRuleTargetAccount(e.target.value);
+                        setAutoSearch(e.target.value);
+                      }}
+                      onFocus={() => {
+                        setAutoSearch(quickRuleTargetAccount);
+                      }}
                       list="plano-contas-list"
                     />
                   </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Conta Crédito:</label>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Conta Débito:</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Código Débito..."
+                        value={quickRuleDebit}
+                        onChange={(e) => setQuickRuleDebit(e.target.value)}
+                        list="plano-contas-list"
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Conta Crédito:</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Código Crédito..."
+                        value={quickRuleCredit}
+                        onChange={(e) => setQuickRuleCredit(e.target.value)}
+                        list="plano-contas-list"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* BLOCO 4: HISTÓRICO CONTÁBIL COM TAGS */}
+              <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <FileText size={14} /> 4. Histórico com Variáveis Inteligentes
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '10px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Cód Hist:</label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Código Crédito..."
-                      value={quickRuleCredit}
-                      onChange={(e) => setQuickRuleCredit(e.target.value)}
-                      list="plano-contas-list"
+                      value={quickRuleHistCode}
+                      onChange={(e) => setQuickRuleHistCode(e.target.value)}
+                      style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700 }}>Template do Histórico:</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={quickRuleHistText}
+                      onChange={(e) => setQuickRuleHistText(e.target.value)}
                     />
                   </div>
                 </div>
-              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '12px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Cód Hist:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={quickRuleHistCode}
-                    onChange={(e) => setQuickRuleHistCode(e.target.value)}
-                    style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}
-                  />
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Histórico Complementar Padrão:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={quickRuleHistText}
-                    onChange={(e) => setQuickRuleHistText(e.target.value)}
-                  />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>Tags:</span>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertQuickRuleTag('[HISTORICO]')} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                    + [HISTORICO]
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertQuickRuleTag('[FORNECEDOR]')} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                    + [FORNECEDOR]
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertQuickRuleTag('[DOC]')} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                    + [DOC]
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertQuickRuleTag('[DATA]')} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                    + [DATA]
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertQuickRuleTag('[VALOR]')} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                    + [VALOR]
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-subtle)', padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button className="btn btn-secondary" onClick={() => setQuickRuleTx(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleQuickRuleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Check size={15} /> Salvar Regra no Dicionário
+                <Check size={16} /> Salvar Regra Inteligente
               </button>
             </div>
           </div>
