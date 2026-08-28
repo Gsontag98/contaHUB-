@@ -295,7 +295,7 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '', company
     ...rule,
     debitAccount: debit,
     creditAccount: credit,
-    historicCode: rule.historicCode || '10',
+    historicCode: rule.historicCode || '',
     historicText: generatedHistory
   };
 };

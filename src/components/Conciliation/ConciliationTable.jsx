@@ -100,7 +100,7 @@ export default function ConciliationTable() {
   const [quickRuleTargetAccount, setQuickRuleTargetAccount] = useState('');
   const [quickRuleDebit, setQuickRuleDebit] = useState('');
   const [quickRuleCredit, setQuickRuleCredit] = useState('');
-  const [quickRuleHistCode, setQuickRuleHistCode] = useState('10');
+  const [quickRuleHistCode, setQuickRuleHistCode] = useState('');
   const [quickRuleHistText, setQuickRuleHistText] = useState('[HISTORICO]');
 
   // Extract non-synthetic accounts from active chart of accounts
@@ -170,7 +170,7 @@ export default function ConciliationTable() {
           amount: Math.abs(numVal),
           debitAccount: (ruleMatch && ruleMatch.debitAccount) || (item.debit > 0 ? '' : ''),
           creditAccount: (ruleMatch && ruleMatch.creditAccount) || (item.credit > 0 ? '' : ''),
-          historicCode: (ruleMatch && ruleMatch.historicCode) || '10',
+          historicCode: (ruleMatch && ruleMatch.historicCode) || '',
           historicText: (ruleMatch && ruleMatch.historicText) || desc,
           isSuggested: !!ruleMatch,
           rawRow: item.rawRow
@@ -261,7 +261,7 @@ export default function ConciliationTable() {
     setQuickRuleTargetAccount(isDeb ? (tx.debitAccount || '') : (tx.creditAccount || ''));
     setQuickRuleDebit(tx.debitAccount || '');
     setQuickRuleCredit(tx.creditAccount || '');
-    setQuickRuleHistCode(tx.historicCode || '10');
+    setQuickRuleHistCode(tx.historicCode || '');
     setQuickRuleHistText(tx.historicText || '[HISTORICO]');
   };
 
@@ -323,7 +323,7 @@ export default function ConciliationTable() {
       targetAccount: quickRuleType === 'dynamic' ? quickRuleTargetAccount.trim() : '',
       debitAccount: quickRuleType === 'fixed' ? quickRuleDebit.trim() : '',
       creditAccount: quickRuleType === 'fixed' ? quickRuleCredit.trim() : '',
-      historicCode: quickRuleHistCode || '10',
+      historicCode: quickRuleHistCode || '',
       historicTextTemplate: quickRuleHistText.trim() || '[HISTORICO]',
       historicText: quickRuleHistText.trim() || '[HISTORICO]'
     };
@@ -848,7 +848,7 @@ export default function ConciliationTable() {
                         type="text"
                         className="form-input"
                         style={{ padding: '4px 2px', fontSize: '0.78rem', height: '32px', minHeight: '32px', textAlign: 'center', fontFamily: 'var(--font-mono)', width: '100%', boxSizing: 'border-box' }}
-                        value={tx.historicCode || '10'}
+                        value={tx.historicCode || ''}
                         onChange={(e) => updateTransaction(tx.originalIndex, { historicCode: e.target.value })}
                       />
                     </td>

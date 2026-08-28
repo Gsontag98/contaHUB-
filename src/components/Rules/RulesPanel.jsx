@@ -83,7 +83,7 @@ export default function RulesPanel() {
     targetAccount: '',
     debitAccount: '',
     creditAccount: '',
-    historicCode: '10',
+    historicCode: '',
     historicTextTemplate: '[HISTORICO]'
   };
 
@@ -122,7 +122,7 @@ export default function RulesPanel() {
       targetAccount: formState.targetAccount.trim(),
       debitAccount: formState.debitAccount.trim(),
       creditAccount: formState.creditAccount.trim(),
-      historicCode: formState.historicCode.trim() || '10',
+      historicCode: formState.historicCode.trim() || '',
       historicTextTemplate: formState.historicTextTemplate.trim()
     };
   }, [formState, editingRuleId]);
@@ -191,7 +191,7 @@ export default function RulesPanel() {
       targetAccount: rule.targetAccount || '',
       debitAccount: rule.debitAccount || '',
       creditAccount: rule.creditAccount || '',
-      historicCode: rule.historicCode || '10',
+      historicCode: rule.historicCode || '',
       historicTextTemplate: rule.historicTextTemplate || rule.historicText || '[HISTORICO]'
     });
 
@@ -1014,7 +1014,7 @@ export default function RulesPanel() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="10"
+                      placeholder="Ex: 10, 450 (Opcional)"
                       value={formState.historicCode}
                       onChange={(e) => setFormState(prev => ({ ...prev, historicCode: e.target.value }))}
                       style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}
