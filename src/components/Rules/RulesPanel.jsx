@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Sparkles, 
   Plus, 
@@ -8,29 +8,18 @@ import {
   Search, 
   Edit2, 
   Check, 
-  AlertTriangle, 
   BookOpen, 
-  ArrowRight, 
   X, 
   Layers, 
-  HelpCircle, 
   RotateCcw, 
   Tag, 
   DollarSign, 
   FileText, 
   Copy, 
   CheckCircle2, 
-  Filter,
-  Landmark,
-  Zap,
-  Fuel,
-  Users,
-  TrendingUp,
   SlidersHorizontal,
   Play,
-  Lightbulb,
-  ExternalLink,
-  ChevronRight
+  Lightbulb
 } from 'lucide-react';
 import useAppStore from '../../store/useAppStore.js';
 import { 
@@ -39,12 +28,6 @@ import {
   simulateRule,
   evaluateRule
 } from '../../engine/rulesEngine.js';
-import { 
-  RULE_CATEGORIES, 
-  PREDEFINED_RULE_TEMPLATES 
-} from '../../engine/ruleTemplates.js';
-
-const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
 export default function RulesPanel() {
   const { 
@@ -59,10 +42,9 @@ export default function RulesPanel() {
     addToast 
   } = useAppStore();
 
-  // Navigation tab: 'my_rules' | 'builder' | 'templates'
+  // Navigation tab: 'my_rules' | 'builder'
   const [activeTab, setActiveTab] = useState('my_rules');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [editingRuleId, setEditingRuleId] = useState(null);
   const formRef = useRef(null);
 
@@ -254,60 +236,6 @@ export default function RulesPanel() {
     addToast('Regra excluída.', 'info');
   };
 
-  // Load a predefined template into the form builder
-  const handleUseTemplate = (tpl) => {
-    setEditingRuleId(null);
-    setFormState({
-      name: tpl.name,
-      mustContainAllInput: (tpl.mustContainAll || []).join(', '),
-      mayContainAnyInput: (tpl.mayContainAny || []).join(', '),
-      mustNotContainInput: (tpl.mustNotContain || []).join(', '),
-      valueType: tpl.valueType || 'any',
-      exactValue: '',
-      minValue: '',
-      maxValue: '',
-      signalCondition: tpl.signalCondition || 'any',
-      ruleType: tpl.ruleType || 'dynamic',
-      targetAccount: tpl.targetAccount || '',
-      debitAccount: '',
-      creditAccount: '',
-      historicCode: tpl.historicCode || '10',
-      historicTextTemplate: tpl.historicTextTemplate || ''
-    });
-    setActiveTab('builder');
-    addToast(`📋 Modelo "${tpl.name}" carregado no criador guiado!`, 'info');
-  };
-
-  // Quick 1-click install template directly into rules
-  const handleQuickInstallTemplate = (tpl) => {
-    const newRule = {
-      id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: tpl.name,
-      mustContainAll: tpl.mustContainAll || [],
-      mayContainAny: tpl.mayContainAny || [],
-      mustNotContain: tpl.mustNotContain || [],
-      pattern: (tpl.mustContainAll || []).join(','),
-      orPattern: (tpl.mayContainAny || []).join(','),
-      notPattern: (tpl.mustNotContain || []).join(','),
-      valueType: tpl.valueType || 'any',
-      exactValue: null,
-      minValue: null,
-      maxValue: null,
-      signalCondition: tpl.signalCondition || 'any',
-      ruleType: tpl.ruleType || 'dynamic',
-      targetAccount: tpl.targetAccount || '',
-      debitAccount: '',
-      creditAccount: '',
-      historicCode: tpl.historicCode || '10',
-      historicTextTemplate: tpl.historicTextTemplate || '',
-      historicText: tpl.historicTextTemplate || '',
-      createdAt: new Date().toISOString()
-    };
-
-    addDeParaRule(newRule);
-    addToast(`⚡ Modelo "${tpl.name}" adicionado com sucesso às suas regras!`, 'success');
-  };
-
   const insertTag = (tag) => {
     const current = formState.historicTextTemplate;
     const next = current ? `${current} ${tag}` : tag;
@@ -353,14 +281,6 @@ export default function RulesPanel() {
     });
   }, [deParaRules, searchTerm]);
 
-  // Filter templates
-  const filteredTemplates = useMemo(() => {
-    return PREDEFINED_RULE_TEMPLATES.filter(tpl => {
-      if (selectedCategory !== 'all' && tpl.category !== selectedCategory) return false;
-      return true;
-    });
-  }, [selectedCategory]);
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '1200px', margin: '0 auto', paddingBottom: '60px' }}>
       
@@ -378,7 +298,7 @@ export default function RulesPanel() {
               </span>
             </div>
             <span style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
-              Configure a inteligência contábil para preencher contas de Débito, Crédito e Históricos do Sistema Domínio automaticamente.
+              Configure a inteligência contábil com operadores lógicos (<strong>E</strong>, <strong>OU</strong>, <strong>NÃO</strong>), filtros de valores e variáveis no histórico para preencher Débito, Crédito e Domínio automaticamente.
             </span>
           </div>
         </div>
@@ -417,13 +337,13 @@ export default function RulesPanel() {
         </div>
       </div>
 
-      {/* 3 Main Navigation Tabs */}
+      {/* 2 Clean Navigation Tabs */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid var(--border-subtle)', paddingBottom: '2px' }}>
         <button
           onClick={() => setActiveTab('my_rules')}
           style={{
-            padding: '10px 18px',
-            fontSize: '0.92rem',
+            padding: '10px 22px',
+            fontSize: '0.94rem',
             fontWeight: 800,
             cursor: 'pointer',
             border: 'none',
@@ -437,7 +357,7 @@ export default function RulesPanel() {
             transition: 'all 0.2s ease'
           }}
         >
-          <Layers size={17} />
+          <Layers size={18} />
           <span>1. Minhas Regras ({deParaRules.length})</span>
         </button>
 
@@ -447,8 +367,8 @@ export default function RulesPanel() {
             setActiveTab('builder');
           }}
           style={{
-            padding: '10px 18px',
-            fontSize: '0.92rem',
+            padding: '10px 22px',
+            fontSize: '0.94rem',
             fontWeight: 800,
             cursor: 'pointer',
             border: 'none',
@@ -462,38 +382,13 @@ export default function RulesPanel() {
             transition: 'all 0.2s ease'
           }}
         >
-          <SlidersHorizontal size={17} />
+          <SlidersHorizontal size={18} />
           <span>2. Criador Guiado & Simulador</span>
           {editingRuleId && (
             <span style={{ fontSize: '0.68rem', background: 'var(--color-warning)', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
               EDITANDO
             </span>
           )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('templates')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '0.92rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'templates' ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'templates' ? '3px solid var(--accent-cyan)' : '3px solid transparent',
-            marginBottom: '-2px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <BookOpen size={17} />
-          <span>3. Biblioteca de Modelos Prontos ({PREDEFINED_RULE_TEMPLATES.length})</span>
-          <span className="badge badge-accent" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
-            1-CLIQUE
-          </span>
         </button>
       </div>
 
@@ -504,7 +399,7 @@ export default function RulesPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Action Row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ position: 'relative', width: '320px' }}>
+            <div style={{ position: 'relative', width: '360px' }}>
               <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 type="text"
@@ -516,7 +411,7 @@ export default function RulesPanel() {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div>
               <button 
                 className="btn btn-primary"
                 onClick={() => {
@@ -527,14 +422,6 @@ export default function RulesPanel() {
                 <Plus size={16} />
                 <span>Criar Nova Regra</span>
               </button>
-
-              <button 
-                className="btn btn-secondary"
-                onClick={() => setActiveTab('templates')}
-              >
-                <BookOpen size={16} />
-                <span>Explorar Biblioteca de Modelos</span>
-              </button>
             </div>
           </div>
 
@@ -543,16 +430,13 @@ export default function RulesPanel() {
               <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '50%', color: 'var(--accent-cyan)' }}>
                 <Sparkles size={36} />
               </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>Nenhuma regra cadastrada ainda</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>Nenhuma regra cadastrada</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: '500px', margin: 0, lineHeight: '1.5' }}>
                 Crie regras inteligentes para que o contaHUB identifique automaticamente tarifas bancárias, combustíveis, impostos e salários direto do extrato!
               </p>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+              <div style={{ marginTop: '6px' }}>
                 <button className="btn btn-primary" onClick={() => { resetForm(); setActiveTab('builder'); }}>
-                  <Plus size={16} /> Criar Minha Primeira Regra
-                </button>
-                <button className="btn btn-secondary" onClick={() => setActiveTab('templates')}>
-                  <BookOpen size={16} /> Ver Modelos Prontos
+                  <Plus size={16} /> Criar Regra no Construtor Guiado
                 </button>
               </div>
             </div>
@@ -1135,124 +1019,6 @@ export default function RulesPanel() {
                 <li>Use a tag <code>[FORNECEDOR]</code> para colocar o nome identificado automaticamente no histórico.</li>
               </ul>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: BIBLIOTECA DE MODELOS PRONTOS */}
-      {/* ========================================================================= */}
-      {activeTab === 'templates' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Category Filter Pills */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {RULE_CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`btn btn-sm ${selectedCategory === cat.id ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ fontSize: '0.82rem', padding: '6px 14px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                <span>{cat.name}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Templates Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-            {filteredTemplates.map(tpl => (
-              <div
-                key={tpl.id}
-                className="card glass-card"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '14px',
-                  padding: '18px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-subtle)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                    <h4 style={{ fontSize: '0.98rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                      {tpl.name}
-                    </h4>
-                    <span className="badge badge-subtle" style={{ fontSize: '0.68rem' }}>
-                      {tpl.category.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>
-                    {tpl.description}
-                  </p>
-
-                  {/* Logic Badges */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
-                    {tpl.mustContainAll && tpl.mustContainAll.length > 0 && (
-                      <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--color-success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        E: {tpl.mustContainAll.join(', ')}
-                      </span>
-                    )}
-
-                    {tpl.mayContainAny && tpl.mayContainAny.length > 0 && (
-                      <span style={{ fontSize: '0.7rem', background: 'rgba(45, 212, 191, 0.12)', color: 'var(--accent-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        OU: {tpl.mayContainAny.slice(0, 4).join(', ')}{tpl.mayContainAny.length > 4 ? '...' : ''}
-                      </span>
-                    )}
-
-                    {tpl.mustNotContain && tpl.mustNotContain.length > 0 && (
-                      <span style={{ fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.12)', color: 'var(--color-danger)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        NÃO: {tpl.mustNotContain.join(', ')}
-                      </span>
-                    )}
-
-                    {tpl.signalCondition && tpl.signalCondition !== 'any' && (
-                      <span style={{ fontSize: '0.7rem', background: 'var(--accent-glow)', color: 'var(--accent-teal)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        {tpl.signalCondition === 'debit_only' ? 'Saídas (-)' : 'Entradas (+)'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Suggested Account & History */}
-                  <div style={{ background: 'var(--bg-surface)', padding: '10px', borderRadius: '6px', fontSize: '0.76rem', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Conta Sugerida: </span>
-                      <strong style={{ color: 'var(--accent-cyan)' }}>{tpl.targetAccount}</strong> — {tpl.suggestedAccountName}
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Histórico: </span>
-                      <em>"{tpl.historicTextTemplate}"</em>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => handleQuickInstallTemplate(tpl)}
-                    style={{ flex: 1, fontSize: '0.78rem' }}
-                  >
-                    <Plus size={14} />
-                    <span>Adicionar em 1-Clique</span>
-                  </button>
-
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleUseTemplate(tpl)}
-                    title="Editar no Criador Guiado antes de salvar"
-                    style={{ fontSize: '0.78rem' }}
-                  >
-                    <Edit2 size={13} />
-                    <span>Personalizar</span>
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
