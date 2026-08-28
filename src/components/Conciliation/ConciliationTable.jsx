@@ -24,7 +24,10 @@ import {
   HelpCircle,
   Upload,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Tag,
+  DollarSign,
+  BookOpen
 } from 'lucide-react';
 import useAppStore from '../../store/useAppStore.js';
 import { suggestPattern, matchTransactionRule } from '../../engine/rulesEngine.js';
