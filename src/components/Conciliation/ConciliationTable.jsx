@@ -217,11 +217,13 @@ export default function ConciliationTable() {
       } else if (!debit && credit) {
         debit = newCounterpart;
       } else if (!debit && !credit) {
+        // Aplica APENAS a conta do Banco/Caixa no lado correto (Entrada = Débito no Banco, Saída = Crédito no Banco)
+        // O outro lado (despesa/receita/fornecedor) permanece em branco até que uma regra ou o usuário preencha.
         if (isIncome) {
           debit = newCounterpart;
-          credit = '1101';
+          credit = '';
         } else {
-          debit = '2101';
+          debit = '';
           credit = newCounterpart;
         }
       }
