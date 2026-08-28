@@ -1,7 +1,8 @@
 /**
  * Motor de Regras De-Para Contábeis Avançado do contaHUB
- * Suporta lógica booleana completa (E, OU, NÃO), condições rigorosas de valores financeiros,
- * templates dinâmicos de histórico contábil com tags e simulação em tempo real.
+ * Inspirado nos importadores contábeis da Domínio Sistemas.
+ * Suporta fatiamento de tokens do extrato, modos de comparação (Contendo, Iniciando, Terminando),
+ * operadores lógicos (E, OU, NÃO), catálogo completo de variáveis contábeis e simulação em tempo real.
  */
 
 export const normalizeText = (text) => {
@@ -9,26 +10,141 @@ export const normalizeText = (text) => {
   return text
     .toString()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/[–—]/g, '-')
-    .replace(/s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
+ * Fatiador de Tokens / Palavras do Extrato (Word Tokenizer)
+ * Quebra a descrição em palavras e termos individuais para seleção visual.
+ */
+export const tokenizeDescription = (description) => {
+  if (!description) return [];
+  const clean = normalizeText(description);
+  const words = clean
+    .split(/\s+/)
+    .map(w => w.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, '').trim())
+    .filter(Boolean);
+
+  // Retorna tokens únicos mantendo a ordem original
+  const unique = [];
+  words.forEach(w => {
+    if (w.length >= 2 && !unique.includes(w)) {
+      unique.push(w);
+    }
+  });
+
+  return unique;
+};
+
+/**
+ * Limpeza de Códigos / Ruído Numérico (Dicionário de Remoção)
+ * Remove sequências numéricas longas, códigos de barras, hashes e autenticações bancárias.
+ */
+export const cleanJunkNumbers = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\b\d{6,}\b/g, '')         // Números com 6+ dígitos (documentos longos, autenticações)
+    .replace(/\b[A-Z]{2}\d{5,}\b/gi, '')  // Códigos tipo CX609426, TB12345
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
 /**
  * Formata um valor numérico para exibição em moeda brasileira.
  */
-const formatCurrency = (val) => {
+export const formatCurrency = (val) => {
   const num = typeof val === 'number' ? Math.abs(val) : parseFloat(val) || 0;
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+};
+
+/**
+ * Avalia se um texto corresponde a um padrão de acordo com o modo de comparação.
+ */
+export const matchPatternMode = (sourceText, pattern, mode = 'contains') => {
+  if (!sourceText || !pattern) return false;
+  const src = normalizeText(sourceText);
+  const pat = normalizeText(pattern);
+
+  switch (mode) {
+    case 'startsWith':
+      return src.startsWith(pat);
+    case 'endsWith':
+      return src.endsWith(pat);
+    case 'exact':
+      return src === pat;
+    case 'contains':
+    default:
+      return src.includes(pat);
+  }
+};
+
+/**
+ * Gera a representação textual / fórmula lógica da regra montada (estilo SQL/Domínio).
+ */
+export const generateLogicalFormula = (rule) => {
+  if (!rule) return '';
+
+  const mustAll = (rule.mustContainAll && Array.isArray(rule.mustContainAll))
+    ? rule.mustContainAll
+    : (rule.pattern ? rule.pattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  const mayAny = (rule.mayContainAny && Array.isArray(rule.mayContainAny))
+    ? rule.mayContainAny
+    : (rule.orPattern ? rule.orPattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  const mustNot = (rule.mustNotContain && Array.isArray(rule.mustNotContain))
+    ? rule.mustNotContain
+    : (rule.notPattern ? rule.notPattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  const mode = rule.matchMode || 'contains';
+  const getLike = (t) => {
+    if (mode === 'startsWith') return `'${t}%'`;
+    if (mode === 'endsWith') return `'%${t}'`;
+    if (mode === 'exact') return `'${t}'`;
+    return `'%${t}%'`;
+  };
+
+  const parts = [];
+
+  if (mustAll.length > 0) {
+    const andGroup = mustAll.map(t => `(unaccent(#field_historico#) like ${getLike(t)})`).join(' and ');
+    parts.push(mustAll.length > 1 ? `(${andGroup})` : andGroup);
+  }
+
+  if (mayAny.length > 0) {
+    const orGroup = mayAny.map(t => `(unaccent(#field_historico#) like ${getLike(t)})`).join(' or ');
+    parts.push(`(${orGroup})`);
+  }
+
+  if (mustNot.length > 0) {
+    const notGroup = mustNot.map(t => `not (unaccent(#field_historico#) like ${getLike(t)})`).join(' and ');
+    parts.push(mustNot.length > 1 ? `(${notGroup})` : notGroup);
+  }
+
+  if (rule.signalCondition === 'debit_only') {
+    parts.push('(#tipo_movimento# = "D")');
+  } else if (rule.signalCondition === 'credit_only') {
+    parts.push('(#tipo_movimento# = "C")');
+  }
+
+  if (rule.valueType === 'exact' && rule.exactValue) {
+    parts.push(`(#valor# = ${rule.exactValue})`);
+  } else if (rule.valueType === 'range' && (rule.minValue || rule.maxValue)) {
+    parts.push(`(#valor# between ${rule.minValue || 0} and ${rule.maxValue || 999999})`);
+  }
+
+  return parts.join(' and ') || '(nenhuma condição configurada)';
 };
 
 /**
  * Avalia se uma transação bate com os critérios de uma regra avançada ou legada.
  * Retorna o objeto enriquecido com contas e histórico gerado ou null se não bater.
  */
-export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
+export const evaluateRule = (rule, transaction, defaultCounterpart = '', companyContext = {}) => {
   if (!rule || !transaction) return null;
 
   const desc = transaction.description || transaction.historico || '';
@@ -39,11 +155,16 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
   const numVal = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue) || 0;
   const absVal = Math.abs(numVal);
   const isDebit = transaction.isDebit !== undefined ? transaction.isDebit : (numVal < 0);
+  const bankName = transaction.bankName || transaction.banco || 'BANCO';
+  const companyName = companyContext.name || transaction.empresa || 'EMPRESA';
+  const supplierCnpj = transaction.supplierCnpj || transaction.cnpj || '';
 
   const cleanDesc = normalizeText(desc);
   const cleanSupplier = normalizeText(supplier);
   const cleanDoc = normalizeText(doc);
   const unifiedSearchText = [cleanDesc, cleanSupplier, cleanDoc].filter(Boolean).join(' ');
+
+  const mode = rule.matchMode || 'contains';
 
   // =========================================================================
   // 1. AVALIAÇÃO DE TERMOS E OPERADORES LÓGICOS (E, OU, NÃO)
@@ -55,7 +176,7 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
     : (rule.pattern ? rule.pattern.split(',').map(t => normalizeText(t.trim())).filter(Boolean) : []);
 
   if (mustAll.length > 0) {
-    const hasAll = mustAll.every(term => unifiedSearchText.includes(term));
+    const hasAll = mustAll.every(term => matchPatternMode(unifiedSearchText, term, mode));
     if (!hasAll) return null;
   }
 
@@ -65,7 +186,7 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
     : (rule.orPattern ? rule.orPattern.split(',').map(t => normalizeText(t.trim())).filter(Boolean) : []);
 
   if (mayAny.length > 0) {
-    const hasAny = mayAny.some(term => unifiedSearchText.includes(term));
+    const hasAny = mayAny.some(term => matchPatternMode(unifiedSearchText, term, mode));
     if (!hasAny) return null;
   }
 
@@ -75,7 +196,7 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
     : (rule.notPattern ? rule.notPattern.split(',').map(t => normalizeText(t.trim())).filter(Boolean) : []);
 
   if (mustNot.length > 0) {
-    const hasForbidden = mustNot.some(term => unifiedSearchText.includes(term));
+    const hasForbidden = mustNot.some(term => matchPatternMode(unifiedSearchText, term, 'contains'));
     if (hasForbidden) return null;
   }
 
@@ -130,21 +251,41 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '') => {
     }
   }
 
-   // =========================================================================
-  // 4. GERAÇÃO DINÂMICA DE HISTÓRICO COM TAGS / PLACEHOLDERS
+  // =========================================================================
+  // 4. GERAÇÃO DINÂMICA DE HISTÓRICO COM VARIÁVEIS DO SISTEMA & TRECHOS
   // =========================================================================
   let generatedHistory = rule.historicText || rule.historicTextTemplate || desc;
 
   if (rule.historicTextTemplate) {
+    // Parse date components
+    let dayStr = '', monthStr = '', yearStr = '', prevMonthStr = '';
+    if (date) {
+      const parts = date.split('-');
+      if (parts.length === 3) {
+        yearStr = parts[0];
+        monthStr = parts[1];
+        dayStr = parts[2];
+        const mNum = parseInt(monthStr, 10);
+        prevMonthStr = mNum > 1 ? String(mNum - 1).padStart(2, '0') : '12';
+      }
+    }
+
     generatedHistory = rule.historicTextTemplate.replace(
-      /\[(HISTORICO|FORNECEDOR|DOC|NF|DATA|VALOR)\]/gi,
+      /\[(HISTORICO|FORNECEDOR|DOC|NF|DATA|VALOR|BANCO|EMPRESA|DIA|MES|ANO|MES_ANTERIOR|CNPJ_FORNECEDOR)\]/gi,
       (match, token) => {
         const upper = token.toUpperCase();
         if (upper === 'HISTORICO') return desc;
         if (upper === 'FORNECEDOR') return supplier || desc;
         if (upper === 'DOC' || upper === 'NF') return doc;
-        if (upper === 'DATA') return date ? date.split('-').reverse().join('/') : '';
+        if (upper === 'DATA') return date ? (date.includes('-') ? date.split('-').reverse().join('/') : date) : '';
         if (upper === 'VALOR') return formatCurrency(absVal);
+        if (upper === 'BANCO') return bankName;
+        if (upper === 'EMPRESA') return companyName;
+        if (upper === 'DIA') return dayStr;
+        if (upper === 'MES') return monthStr;
+        if (upper === 'ANO') return yearStr;
+        if (upper === 'MES_ANTERIOR') return prevMonthStr;
+        if (upper === 'CNPJ_FORNECEDOR') return supplierCnpj;
         return match;
       }
     ).replace(/\s+/g, ' ').trim();
@@ -184,16 +325,15 @@ export const matchTransactionRule = (description, value, rules = [], defaultCoun
 
 /**
  * Simulador de regras em tempo real: testa uma regra contra uma lista de transações.
- * Retorna as transações afetadas e exemplos de transformação contábil.
  */
-export const simulateRule = (rule, transactions = [], defaultCounterpart = '') => {
+export const simulateRule = (rule, transactions = [], defaultCounterpart = '', companyContext = {}) => {
   if (!rule || !transactions || transactions.length === 0) {
     return { count: 0, matches: [], sample: null };
   }
 
   const matches = [];
   transactions.forEach(tx => {
-    const evalResult = evaluateRule(rule, tx, defaultCounterpart);
+    const evalResult = evaluateRule(rule, tx, defaultCounterpart, companyContext);
     if (evalResult) {
       matches.push({
         original: tx,
@@ -212,9 +352,9 @@ export const simulateRule = (rule, transactions = [], defaultCounterpart = '') =
 export const suggestPattern = (description) => {
   if (!description) return '';
   let text = description.toString().trim();
-  text = text.replace(/d+/g, '');
+  text = text.replace(/\b\d+\b/g, '');
   text = text.replace(/REF..*$/i, '');
-  text = text.replace(/s+/g, ' ').trim();
+  text = text.replace(/\s+/g, ' ').trim();
   const words = text.split(' ');
   if (words.length > 3) {
     return words.slice(0, 3).join(' ');

@@ -19,14 +19,22 @@ import {
   CheckCircle2, 
   SlidersHorizontal,
   Play,
-  Lightbulb
+  Lightbulb,
+  Code2,
+  Eraser,
+  Wand2,
+  ChevronRight,
+  Database
 } from 'lucide-react';
 import useAppStore from '../../store/useAppStore.js';
 import { 
   exportRulesAsJson, 
   importRulesFromJson, 
   simulateRule,
-  evaluateRule
+  evaluateRule,
+  tokenizeDescription,
+  cleanJunkNumbers,
+  generateLogicalFormula
 } from '../../engine/rulesEngine.js';
 
 export default function RulesPanel() {
@@ -55,12 +63,17 @@ export default function RulesPanel() {
 
   const planoContas = activePlan?.accounts || [];
 
+  // Sandbox / Free Text / Sample Description for Tokenizer
+  const [sampleDescription, setSampleDescription] = useState('DEBITO ARRECADACAO 00394460005887 DARFC0385 - DARFC0385');
+  const [customWordInput, setCustomWordInput] = useState('');
+
   // Default empty form state
   const initialFormState = {
     name: '',
-    mustContainAllInput: '', // AND
-    mayContainAnyInput: '',  // OR
-    mustNotContainInput: '', // NOT
+    mustContainAll: [], // AND list
+    mayContainAny: [],  // OR list
+    mustNotContain: [], // NOT list
+    matchMode: 'contains', // 'contains' | 'startsWith' | 'endsWith' | 'exact'
     valueType: 'any',        // 'any' | 'exact' | 'range' | 'greater' | 'less'
     exactValue: '',
     minValue: '',
@@ -71,7 +84,7 @@ export default function RulesPanel() {
     debitAccount: '',
     creditAccount: '',
     historicCode: '10',
-    historicTextTemplate: ''
+    historicTextTemplate: '[HISTORICO]'
   };
 
   const [formState, setFormState] = useState(initialFormState);
@@ -81,35 +94,25 @@ export default function RulesPanel() {
   const [autoSearch, setAutoSearch] = useState('');
 
   // Sandbox / Free Text Simulator State
-  const [sandboxText, setSandboxText] = useState('TARIFA MENSAL CONTA CORRENTE ITAU EMPRESAS');
-  const [sandboxValue, setSandboxValue] = useState('-49.90');
+  const [sandboxValue, setSandboxValue] = useState('-150.50');
+
+  // Tokens extracted from sampleDescription
+  const extractedTokens = useMemo(() => {
+    return tokenizeDescription(sampleDescription);
+  }, [sampleDescription]);
 
   // Convert formState into rule object
   const currentRuleObj = useMemo(() => {
-    const mustAll = formState.mustContainAllInput
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-
-    const mayAny = formState.mayContainAnyInput
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-
-    const mustNot = formState.mustNotContainInput
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-
     return {
       id: editingRuleId || 'temp_rule',
-      name: formState.name.trim() || (mustAll.length > 0 ? mustAll.join(' + ') : 'Nova Regra'),
-      mustContainAll: mustAll,
-      mayContainAny: mayAny,
-      mustNotContain: mustNot,
-      pattern: mustAll.join(','),
-      orPattern: mayAny.join(','),
-      notPattern: mustNot.join(','),
+      name: formState.name.trim() || (formState.mustContainAll.length > 0 ? formState.mustContainAll.join(' + ') : 'Nova Regra'),
+      mustContainAll: formState.mustContainAll,
+      mayContainAny: formState.mayContainAny,
+      mustNotContain: formState.mustNotContain,
+      pattern: formState.mustContainAll.join(','),
+      orPattern: formState.mayContainAny.join(','),
+      notPattern: formState.mustNotContain.join(','),
+      matchMode: formState.matchMode,
       valueType: formState.valueType,
       exactValue: formState.exactValue ? parseFloat(formState.exactValue) : null,
       minValue: formState.minValue ? parseFloat(formState.minValue) : null,
@@ -124,48 +127,61 @@ export default function RulesPanel() {
     };
   }, [formState, editingRuleId]);
 
+  // Logical Formula Preview
+  const logicalFormula = useMemo(() => {
+    return generateLogicalFormula(currentRuleObj);
+  }, [currentRuleObj]);
+
   // Real-Time Simulator against current loaded bank transactions
   const simulationResult = useMemo(() => {
     if (!transactions || transactions.length === 0) return { count: 0, matches: [], sample: null };
-    if (!formState.mustContainAllInput.trim() && !formState.mayContainAnyInput.trim()) {
+    if (formState.mustContainAll.length === 0 && formState.mayContainAny.length === 0) {
       return { count: 0, matches: [], sample: null };
     }
-    return simulateRule(currentRuleObj, transactions, '1001');
-  }, [currentRuleObj, transactions]);
+    return simulateRule(currentRuleObj, transactions, '1001', activeCompany || {});
+  }, [currentRuleObj, transactions, activeCompany]);
 
   // Sandbox Live Free-Text Evaluation
   const sandboxEvaluation = useMemo(() => {
-    if (!sandboxText.trim()) return null;
+    if (!sampleDescription.trim()) return null;
     const numVal = parseFloat(sandboxValue) || 0;
     const mockTx = {
-      description: sandboxText,
+      description: sampleDescription,
       value: numVal,
       amount: Math.abs(numVal),
       isDebit: numVal < 0,
-      document: 'DOC123',
-      date: new Date().toISOString().split('T')[0]
+      document: 'DARF0385',
+      date: new Date().toISOString().split('T')[0],
+      supplierName: 'RECEITA FEDERAL DO BRASIL',
+      bankName: 'ITAU'
     };
-    return evaluateRule(currentRuleObj, mockTx, '1001');
-  }, [currentRuleObj, sandboxText, sandboxValue]);
+    return evaluateRule(currentRuleObj, mockTx, '1001', activeCompany || {});
+  }, [currentRuleObj, sampleDescription, sandboxValue, activeCompany]);
 
   const resetForm = () => {
     setEditingRuleId(null);
     setFormState(initialFormState);
+    setSampleDescription('DEBITO ARRECADACAO 00394460005887 DARFC0385 - DARFC0385');
   };
 
   const handleEditClick = (rule) => {
     setEditingRuleId(rule.id);
+    const must = (rule.mustContainAll && Array.isArray(rule.mustContainAll))
+      ? rule.mustContainAll
+      : (rule.pattern ? rule.pattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const may = (rule.mayContainAny && Array.isArray(rule.mayContainAny))
+      ? rule.mayContainAny
+      : (rule.orPattern ? rule.orPattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const not = (rule.mustNotContain && Array.isArray(rule.mustNotContain))
+      ? rule.mustNotContain
+      : (rule.notPattern ? rule.notPattern.split(',').map(s => s.trim()).filter(Boolean) : []);
+
     setFormState({
       name: rule.name || '',
-      mustContainAllInput: (rule.mustContainAll && Array.isArray(rule.mustContainAll)) 
-        ? rule.mustContainAll.join(', ') 
-        : (rule.pattern || ''),
-      mayContainAnyInput: (rule.mayContainAny && Array.isArray(rule.mayContainAny)) 
-        ? rule.mayContainAny.join(', ') 
-        : (rule.orPattern || ''),
-      mustNotContainInput: (rule.mustNotContain && Array.isArray(rule.mustNotContain)) 
-        ? rule.mustNotContain.join(', ') 
-        : (rule.notPattern || ''),
+      mustContainAll: must,
+      mayContainAny: may,
+      mustNotContain: not,
+      matchMode: rule.matchMode || 'contains',
       valueType: rule.valueType || 'any',
       exactValue: rule.exactValue !== null && rule.exactValue !== undefined ? String(rule.exactValue) : '',
       minValue: rule.minValue !== null && rule.minValue !== undefined ? String(rule.minValue) : '',
@@ -176,8 +192,12 @@ export default function RulesPanel() {
       debitAccount: rule.debitAccount || '',
       creditAccount: rule.creditAccount || '',
       historicCode: rule.historicCode || '10',
-      historicTextTemplate: rule.historicTextTemplate || rule.historicText || ''
+      historicTextTemplate: rule.historicTextTemplate || rule.historicText || '[HISTORICO]'
     });
+
+    if (must.length > 0) {
+      setSampleDescription(must.join(' '));
+    }
     setActiveTab('builder');
   };
 
@@ -192,11 +212,35 @@ export default function RulesPanel() {
     addToast('Regra duplicada com sucesso!', 'info');
   };
 
+  // Add term to specific group
+  const addTermToGroup = (term, group) => {
+    if (!term) return;
+    const clean = term.trim().toUpperCase();
+    if (!clean) return;
+
+    setFormState(prev => {
+      const currentList = prev[group] || [];
+      if (currentList.includes(clean)) return prev;
+      return {
+        ...prev,
+        [group]: [...currentList, clean]
+      };
+    });
+  };
+
+  // Remove term from group
+  const removeTermFromGroup = (term, group) => {
+    setFormState(prev => ({
+      ...prev,
+      [group]: (prev[group] || []).filter(t => t !== term)
+    }));
+  };
+
   const handleSaveRule = (e) => {
     e.preventDefault();
 
-    if (!formState.mustContainAllInput.trim() && !formState.mayContainAnyInput.trim()) {
-      addToast('Informe ao menos um termo de busca (E ou OU) para a regra.', 'warning');
+    if (formState.mustContainAll.length === 0 && formState.mayContainAny.length === 0) {
+      addToast('Adicione ao menos um termo de busca (E ou OU) para a regra.', 'warning');
       return;
     }
 
@@ -236,10 +280,21 @@ export default function RulesPanel() {
     addToast('Regra excluída.', 'info');
   };
 
-  const insertTag = (tag) => {
-    const current = formState.historicTextTemplate;
-    const next = current ? `${current} ${tag}` : tag;
-    setFormState(prev => ({ ...prev, historicTextTemplate: next }));
+  // Insert tag/word into history template
+  const insertHistoryToken = (token) => {
+    setFormState(prev => ({
+      ...prev,
+      historicTextTemplate: prev.historicTextTemplate ? `${prev.historicTextTemplate} ${token}` : token
+    }));
+  };
+
+  // Clean junk numbers from history template or sample description
+  const handleCleanJunk = () => {
+    const cleanedDesc = cleanJunkNumbers(sampleDescription);
+    setSampleDescription(cleanedDesc);
+    const cleanedHist = cleanJunkNumbers(formState.historicTextTemplate);
+    setFormState(prev => ({ ...prev, historicTextTemplate: cleanedHist || '[HISTORICO]' }));
+    addToast('🧹 Códigos numéricos e ruídos longos removidos!', 'info');
   };
 
   // Filtered accounts for autocomplete
@@ -282,7 +337,7 @@ export default function RulesPanel() {
   }, [deParaRules, searchTerm]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '1200px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '1240px', margin: '0 auto', paddingBottom: '60px' }}>
       
       {/* Top Hero Banner */}
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -292,13 +347,13 @@ export default function RulesPanel() {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0 }}>Regras De-Para Contábeis</h2>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0 }}>Montador Visual de Regras De-Para</h2>
               <span className="badge badge-accent" style={{ fontWeight: 800 }}>
                 {deParaRules.length} {deParaRules.length === 1 ? 'Regra Ativa' : 'Regras Ativas'}
               </span>
             </div>
             <span style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
-              Configure a inteligência contábil com operadores lógicos (<strong>E</strong>, <strong>OU</strong>, <strong>NÃO</strong>), filtros de valores e variáveis no histórico para preencher Débito, Crédito e Domínio automaticamente.
+              Construa regras contábeis fatiando termos do extrato em 1-clique (<strong>E</strong>, <strong>OU</strong>, <strong>NÃO</strong>), variáveis inteligentes e integração direta com o Sistema Domínio.
             </span>
           </div>
         </div>
@@ -383,7 +438,7 @@ export default function RulesPanel() {
           }}
         >
           <SlidersHorizontal size={18} />
-          <span>2. Criador Guiado & Simulador</span>
+          <span>2. Montador Visual & Simulador</span>
           {editingRuleId && (
             <span style={{ fontSize: '0.68rem', background: 'var(--color-warning)', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
               EDITANDO
@@ -436,7 +491,7 @@ export default function RulesPanel() {
               </p>
               <div style={{ marginTop: '6px' }}>
                 <button className="btn btn-primary" onClick={() => { resetForm(); setActiveTab('builder'); }}>
-                  <Plus size={16} /> Criar Regra no Construtor Guiado
+                  <Plus size={16} /> Abrir Montador Visual
                 </button>
               </div>
             </div>
@@ -463,7 +518,7 @@ export default function RulesPanel() {
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '70%' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '75%' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <strong style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>
                           {rule.name || rule.pattern || 'Regra Sem Nome'}
@@ -471,6 +526,11 @@ export default function RulesPanel() {
                         <span className="badge badge-subtle" style={{ fontSize: '0.72rem' }}>
                           {rule.ruleType === 'dynamic' ? 'Regra Dinâmica' : 'Regra Fixa'}
                         </span>
+                        {rule.matchMode && rule.matchMode !== 'contains' && (
+                          <span className="badge" style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.12)', color: 'var(--accent-cyan)' }}>
+                            Modo: {rule.matchMode === 'startsWith' ? 'Iniciando com' : (rule.matchMode === 'endsWith' ? 'Terminando com' : 'Exato')}
+                          </span>
+                        )}
                         {rule.signalCondition && rule.signalCondition !== 'any' && (
                           <span className="badge" style={{ fontSize: '0.7rem', background: 'rgba(45, 212, 191, 0.12)', color: 'var(--accent-cyan)', fontWeight: 700 }}>
                             {rule.signalCondition === 'debit_only' ? 'Apenas Saídas (-)' : 'Apenas Entradas (+)'}
@@ -522,7 +582,7 @@ export default function RulesPanel() {
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleEditClick(rule)}
-                        title="Editar Regra no Construtor Guiado"
+                        title="Editar Regra no Montador Visual"
                         style={{ padding: '6px 12px', fontSize: '0.78rem' }}
                       >
                         <Edit2 size={13} />
@@ -555,18 +615,18 @@ export default function RulesPanel() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: CRIADOR GUIADO & SIMULADOR */}
+      {/* TAB 2: MONTADOR VISUAL & SIMULADOR (INSPIRADO NO SISTEMA DOMÍNIO) */}
       {/* ========================================================================= */}
       {activeTab === 'builder' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(480px, 1.4fr) minmax(340px, 1fr)', gap: '24px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1.45fr) minmax(360px, 1fr)', gap: '24px', alignItems: 'start' }}>
           
           {/* FORM BUILDER (LEFT) */}
           <div ref={formRef} className="card" style={{ border: editingRuleId ? '2px solid var(--accent-cyan)' : '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <SlidersHorizontal size={20} color="var(--accent-cyan)" />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
-                  {editingRuleId ? '✏️ Editando Regra De-Para' : '🪄 Construtor Guiado Passo a Passo'}
+                <Wand2 size={20} color="var(--accent-cyan)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+                  {editingRuleId ? '✏️ Editando Regra De-Para' : 'Montagem da Regra Contábil'}
                 </h3>
               </div>
               {editingRuleId && (
@@ -577,84 +637,198 @@ export default function RulesPanel() {
             </div>
 
             <form onSubmit={handleSaveRule} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              {/* Rule Name */}
+              
+              {/* Nome de Identificação */}
               <div>
                 <label className="form-label" style={{ fontSize: '0.84rem', fontWeight: 700 }}>
-                  Nome de Identificação da Regra
+                  Nome de Identificação da Regra:
                 </label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Ex: Tarifas Mensais Itaú, Posto de Combustível..."
+                  placeholder="Ex: DARF Arrecadação 0385, Pagamento PIX Fornecedor..."
                   value={formState.name}
                   onChange={(e) => setFormState(prev => ({ ...prev, name: e.target.value }))}
                 />
               </div>
 
-              {/* PASSO 1: TERMOS & OPERADORES */}
+              {/* SEÇÃO 1: DICIONÁRIO / FATIADOR DE PALAVRAS DO EXTRATO (INSPIRAÇÃO SCREENSHOT 1) */}
               <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                  <Tag size={16} />
-                  <span>Passo 1: O que o sistema deve procurar? (E, OU, NÃO)</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Database size={16} />
+                    <span>1. Dicionário de Termos do Extrato</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleCleanJunk}
+                    style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    title="Remover códigos bancários e números longos"
+                  >
+                    <Eraser size={12} /> Limpar Ruídos Numéricos
+                  </button>
                 </div>
 
-                {/* 1.1 E (AND) */}
+                {/* Sample input to extract words */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <label className="form-label" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Check size={14} /> Contém TODAS as palavras (Operador E / AND)
-                    </label>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Separe por vírgula</span>
-                  </div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', color: 'var(--text-muted)', margin: '0 0 4px 0' }}>
+                    Texto do Lançamento de Exemplo para fatiar termos:
+                  </label>
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="Ex: TARIFA, ITAU (todas obrigatórias)"
-                    value={formState.mustContainAllInput}
-                    onChange={(e) => setFormState(prev => ({ ...prev, mustContainAllInput: e.target.value }))}
+                    value={sampleDescription}
+                    onChange={(e) => setSampleDescription(e.target.value)}
+                    placeholder="Cole ou digite uma linha de extrato para extrair as palavras..."
+                    style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)' }}
                   />
                 </div>
 
-                {/* 1.2 OU (OR) */}
+                {/* Clickable Word Tokens */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <label className="form-label" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                      🔵 Contém QUALQUER uma destas (Operador OU / OR)
-                    </label>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Opcional</span>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Clique nos botões de cada palavra para adicionar à regra:
+                  </span>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {/* Entire phrase option */}
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '6px', overflow: 'hidden' }}>
+                      <span style={{ fontSize: '0.74rem', padding: '4px 8px', color: 'var(--text-primary)', fontWeight: 700 }}>
+                        [Completo: Toda a Frase]
+                      </span>
+                      <button type="button" onClick={() => addTermToGroup(sampleDescription, 'mustContainAll')} style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--color-success)', border: 'none', padding: '4px 6px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}>+E</button>
+                      <button type="button" onClick={() => addTermToGroup(sampleDescription, 'mayContainAny')} style={{ background: 'rgba(45, 212, 191, 0.2)', color: 'var(--accent-cyan)', border: 'none', padding: '4px 6px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}>+OU</button>
+                    </div>
+
+                    {/* Individual word tokens */}
+                    {extractedTokens.map((token, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '0.76rem', padding: '4px 8px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>
+                          {token}
+                        </span>
+                        <button type="button" onClick={() => addTermToGroup(token, 'mustContainAll')} title="Obrigatório (E)" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--color-success)', border: 'none', padding: '4px 6px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}>+E</button>
+                        <button type="button" onClick={() => addTermToGroup(token, 'mayContainAny')} title="Alternativo (OU)" style={{ background: 'rgba(45, 212, 191, 0.2)', color: 'var(--accent-cyan)', border: 'none', padding: '4px 6px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}>+OU</button>
+                        <button type="button" onClick={() => addTermToGroup(token, 'mustNotContain')} title="Exceção (NÃO)" style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-danger)', border: 'none', padding: '4px 6px', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}>+NÃO</button>
+                      </div>
+                    ))}
                   </div>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Ex: MENSALIDADE, COBRANCA, DOC, TED (basta 1)"
-                    value={formState.mayContainAnyInput}
-                    onChange={(e) => setFormState(prev => ({ ...prev, mayContainAnyInput: e.target.value }))}
-                  />
                 </div>
 
-                {/* 1.3 NÃO (NOT / EXCEÇÃO) */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <label className="form-label" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <X size={14} /> NÃO PODE Conter (Operador NÃO / NOT - Exceções)
-                    </label>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Bloqueia se encontrar</span>
-                  </div>
+                {/* Add Custom Word Input */}
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="Ex: ESTORNO, CANCELAMENTO, DEVOLUCAO"
-                    value={formState.mustNotContainInput}
-                    onChange={(e) => setFormState(prev => ({ ...prev, mustNotContainInput: e.target.value }))}
+                    placeholder="Digitar outro termo manualmente..."
+                    value={customWordInput}
+                    onChange={(e) => setCustomWordInput(e.target.value)}
+                    style={{ fontSize: '0.82rem' }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addTermToGroup(customWordInput, 'mustContainAll');
+                        setCustomWordInput('');
+                      }
+                    }}
                   />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { addTermToGroup(customWordInput, 'mustContainAll'); setCustomWordInput(''); }} style={{ color: 'var(--color-success)', fontWeight: 700 }}>
+                    + E
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { addTermToGroup(customWordInput, 'mayContainAny'); setCustomWordInput(''); }} style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>
+                    + OU
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { addTermToGroup(customWordInput, 'mustNotContain'); setCustomWordInput(''); }} style={{ color: 'var(--color-danger)', fontWeight: 700 }}>
+                    + NÃO
+                  </button>
+                </div>
+
+                {/* Active Terms Buckets (E, OU, NÃO) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', borderTop: '1px dashed var(--border-subtle)', paddingTop: '10px' }}>
+                  
+                  {/* Bucket E */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--color-success)', minWidth: '160px' }}>
+                      🟢 Contém TODAS (E / AND):
+                    </span>
+                    {formState.mustContainAll.length === 0 ? (
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>(Nenhum termo obrigatório)</span>
+                    ) : (
+                      formState.mustContainAll.map((t, idx) => (
+                        <span key={idx} className="badge badge-accent" style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--color-success)' }}>
+                          {t}
+                          <X size={12} style={{ cursor: 'pointer' }} onClick={() => removeTermFromGroup(t, 'mustContainAll')} />
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Bucket OU */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--accent-cyan)', minWidth: '160px' }}>
+                      🔵 Contém QUALQUER (OU / OR):
+                    </span>
+                    {formState.mayContainAny.length === 0 ? (
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>(Nenhum termo alternativo)</span>
+                    ) : (
+                      formState.mayContainAny.map((t, idx) => (
+                        <span key={idx} className="badge badge-accent" style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(45, 212, 191, 0.15)', color: 'var(--accent-cyan)' }}>
+                          {t}
+                          <X size={12} style={{ cursor: 'pointer' }} onClick={() => removeTermFromGroup(t, 'mayContainAny')} />
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Bucket NÃO */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--color-danger)', minWidth: '160px' }}>
+                      🔴 NÃO PODE Conter (NÃO / NOT):
+                    </span>
+                    {formState.mustNotContain.length === 0 ? (
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>(Nenhuma exceção)</span>
+                    ) : (
+                      formState.mustNotContain.map((t, idx) => (
+                        <span key={idx} className="badge badge-accent" style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--color-danger)' }}>
+                          {t}
+                          <X size={12} style={{ cursor: 'pointer' }} onClick={() => removeTermFromGroup(t, 'mustNotContain')} />
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Modo de Comparação & Fórmula Lógica Display */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>Modo de Comparação:</span>
+                    <label style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" name="matchModeRadio" checked={formState.matchMode === 'contains'} onChange={() => setFormState(prev => ({ ...prev, matchMode: 'contains' }))} />
+                      <span>Contendo (%termo%)</span>
+                    </label>
+                    <label style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" name="matchModeRadio" checked={formState.matchMode === 'startsWith'} onChange={() => setFormState(prev => ({ ...prev, matchMode: 'startsWith' }))} />
+                      <span>Iniciando com (termo%)</span>
+                    </label>
+                    <label style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" name="matchModeRadio" checked={formState.matchMode === 'endsWith'} onChange={() => setFormState(prev => ({ ...prev, matchMode: 'endsWith' }))} />
+                      <span>Terminando com (%termo)</span>
+                    </label>
+                  </div>
+
+                  {/* Logical Formula Box (SQL Style) */}
+                  <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.2)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', overflowX: 'auto', lineHeight: '1.4' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginBottom: '2px', fontWeight: 700 }}>FÓRMULA LÓGICA GERADA (ESTILO DOMÍNIO):</div>
+                    {logicalFormula}
+                  </div>
                 </div>
               </div>
 
-              {/* PASSO 2: CONDIÇÕES DE VALOR & SINAL */}
+              {/* SEÇÃO 2: CONDIÇÕES DE VALOR & SINAL */}
               <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-teal)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 800, color: 'var(--accent-teal)' }}>
                   <DollarSign size={16} />
-                  <span>Passo 2: Condições de Valor Financeiro & Sinal</span>
+                  <span>2. Condições de Valor Financeiro & Sinal</span>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -691,7 +865,6 @@ export default function RulesPanel() {
                   </div>
                 </div>
 
-                {/* Value inputs */}
                 {formState.valueType === 'exact' && (
                   <div>
                     <label className="form-label" style={{ fontSize: '0.8rem' }}>Valor Exato (R$)</label>
@@ -699,7 +872,7 @@ export default function RulesPanel() {
                       type="number"
                       step="0.01"
                       className="form-input"
-                      placeholder="Ex: 49.90"
+                      placeholder="Ex: 150.50"
                       value={formState.exactValue}
                       onChange={(e) => setFormState(prev => ({ ...prev, exactValue: e.target.value }))}
                       required
@@ -727,7 +900,7 @@ export default function RulesPanel() {
                         type="number"
                         step="0.01"
                         className="form-input"
-                        placeholder="Ex: 100.00"
+                        placeholder="Ex: 500.00"
                         value={formState.maxValue}
                         onChange={(e) => setFormState(prev => ({ ...prev, maxValue: e.target.value }))}
                         required
@@ -737,12 +910,12 @@ export default function RulesPanel() {
                 )}
               </div>
 
-              {/* PASSO 3: CONTAS CONTÁBEIS */}
+              {/* SEÇÃO 3: CONTAS CONTÁBEIS */}
               <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-petroleum)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 800, color: 'var(--accent-petroleum)' }}>
                     <BookOpen size={16} />
-                    <span>Passo 3: Para qual conta contábil vai?</span>
+                    <span>3. Contas Contábeis (Plano de Contas)</span>
                   </div>
 
                   <div style={{ display: 'flex', gap: '12px', fontSize: '0.8rem' }}>
@@ -776,7 +949,7 @@ export default function RulesPanel() {
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Código ou Nome (ex: 3101 - Tarifas Bancárias)"
+                        placeholder="Código ou Nome (ex: 2105 - Impostos Federais)"
                         value={formState.targetAccount}
                         onFocus={() => { setActiveInput('target'); setAutoSearch(formState.targetAccount); }}
                         onChange={(e) => {
@@ -828,58 +1001,107 @@ export default function RulesPanel() {
                 )}
               </div>
 
-              {/* PASSO 4: HISTÓRICO COM TAGS */}
+              {/* SEÇÃO 4: HISTÓRICO CONTÁBIL PERSONALIZADO & VARIÁVEIS (INSPIRAÇÃO SCREENSHOT 2) */}
               <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-cyan)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 800, color: 'var(--accent-cyan)' }}>
                   <FileText size={16} />
-                  <span>Passo 4: Como o histórico contábil será montado?</span>
+                  <span>4. Histórico Contábil (Personalizado)</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px' }}>
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Código Histórico</label>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Cód Histórico</label>
                     <input
                       type="text"
                       className="form-input"
                       placeholder="10"
                       value={formState.historicCode}
                       onChange={(e) => setFormState(prev => ({ ...prev, historicCode: e.target.value }))}
+                      style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}
                     />
                   </div>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <label className="form-label" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700 }}>
-                        Template do Histórico Complementar
-                      </label>
-                    </div>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>
+                      Editor do Histórico Complementar
+                    </label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Ex: PAGAMENTO A [FORNECEDOR] REF [HISTORICO] - NF [DOC]"
+                      placeholder="Ex: PAGAMENTO DARF [FORNECEDOR] REF [HISTORICO] - MES [MES]/[ANO]"
                       value={formState.historicTextTemplate}
                       onChange={(e) => setFormState(prev => ({ ...prev, historicTextTemplate: e.target.value }))}
                     />
                   </div>
                 </div>
 
-                {/* Tag Chips */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700 }}>Inserir Variáveis:</span>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertTag('[HISTORICO]')} style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
-                    + [HISTORICO]
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertTag('[FORNECEDOR]')} style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
-                    + [FORNECEDOR]
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertTag('[DOC]')} style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
-                    + [DOC]
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertTag('[DATA]')} style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
-                    + [DATA]
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertTag('[VALOR]')} style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
-                    + [VALOR]
-                  </button>
+                {/* 4.1 Trechos de Palavras do Extrato */}
+                <div>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    Trechos do Histórico (Clique para inserir texto):
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    {extractedTokens.map((w, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => insertHistoryToken(w)}
+                        style={{ fontSize: '0.72rem', padding: '2px 7px' }}
+                      >
+                        + {w}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4.2 Catálogo de Variáveis do Sistema */}
+                <div>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--accent-cyan)', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    Variáveis Dinâmicas do Sistema:
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[HISTORICO]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [HISTORICO]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[FORNECEDOR]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [FORNECEDOR]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[DOC]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [DOC]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[DATA]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [DATA]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[VALOR]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [VALOR]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[BANCO]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [BANCO]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[EMPRESA]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [EMPRESA]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[MES]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [MES]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[ANO]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [ANO]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[DIA]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [DIA]
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => insertHistoryToken('[MES_ANTERIOR]')} style={{ fontSize: '0.72rem', padding: '2px 7px' }}>
+                      + [MES_ANTERIOR]
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4.3 Live History Preview */}
+                <div style={{ background: 'var(--bg-surface)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 800 }}>PRÉ-VISUALIZAÇÃO DO HISTÓRICO RESULTANTE:</span>
+                  <div style={{ fontSize: '0.86rem', color: 'var(--accent-cyan)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>
+                    {sandboxEvaluation ? sandboxEvaluation.historicText : formState.historicTextTemplate}
+                  </div>
                 </div>
               </div>
 
@@ -890,7 +1112,7 @@ export default function RulesPanel() {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   <Check size={16} />
-                  <span>{editingRuleId ? 'Salvar Alterações da Regra' : 'Cadastrar Regra De-Para'}</span>
+                  <span>{editingRuleId ? 'Salvar Alterações da Regra' : 'Salvar Regra no Dicionário'}</span>
                 </button>
               </div>
             </form>
@@ -917,8 +1139,8 @@ export default function RulesPanel() {
                   type="text"
                   className="form-input"
                   placeholder="Digite um texto de extrato para testar..."
-                  value={sandboxText}
-                  onChange={(e) => setSandboxText(e.target.value)}
+                  value={sampleDescription}
+                  onChange={(e) => setSampleDescription(e.target.value)}
                   style={{ fontSize: '0.82rem' }}
                 />
 
@@ -927,7 +1149,7 @@ export default function RulesPanel() {
                     type="number"
                     step="0.01"
                     className="form-input"
-                    placeholder="Valor (ex: -49.90)"
+                    placeholder="Valor (ex: -150.50)"
                     value={sandboxValue}
                     onChange={(e) => setSandboxValue(e.target.value)}
                     style={{ fontSize: '0.82rem' }}
@@ -955,7 +1177,7 @@ export default function RulesPanel() {
 
                   <div style={{ fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Histórico Resultante:</span>
-                    <strong style={{ color: 'var(--text-primary)', textAlign: 'right', maxWidth: '180px' }}>
+                    <strong style={{ color: 'var(--text-primary)', textAlign: 'right', maxWidth: '200px' }}>
                       {sandboxEvaluation.historicText}
                     </strong>
                   </div>
@@ -1014,9 +1236,10 @@ export default function RulesPanel() {
                 <span>Dicas Práticas para Contadores</span>
               </div>
               <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: '1.4' }}>
-                <li>Use <strong>E</strong> para termos fixos do banco (ex: <code>TARIFA, ITAU</code>).</li>
-                <li>Use <strong>NÃO</strong> para evitar que estornos virem despesa (ex: <code>ESTORNO</code>).</li>
-                <li>Use a tag <code>[FORNECEDOR]</code> para colocar o nome identificado automaticamente no histórico.</li>
+                <li>Clique em <code>+ E</code> para adicionar termos fixos do banco (ex: <code>DARFC0385</code>).</li>
+                <li>Clique em <code>+ NÃO</code> para evitar que estornos virem despesa.</li>
+                <li>Use o botão <strong>Limpar Ruídos Numéricos</strong> para retirar autenticações longas.</li>
+                <li>Adicione <code>[MES]</code> e <code>[ANO]</code> para gerar históricos de competência contábil perfeitos.</li>
               </ul>
             </div>
           </div>
