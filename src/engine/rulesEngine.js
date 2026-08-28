@@ -254,9 +254,8 @@ export const evaluateRule = (rule, transaction, defaultCounterpart = '', company
   // =========================================================================
   // 4. GERAÇÃO DINÂMICA DE HISTÓRICO COM VARIÁVEIS DO SISTEMA & TRECHOS
   // =========================================================================
-  let generatedHistory = rule.historicText || rule.historicTextTemplate || desc;
-
-  if (rule.historicTextTemplate) {
+  let generatedHistory = rule.historicTextTemplate ? rule.historicTextTemplate : (rule.historicText || desc);
+  if (rule.historicTextTemplate && rule.historicTextTemplate.trim()) {
     // Parse date components
     let dayStr = '', monthStr = '', yearStr = '', prevMonthStr = '';
     if (date) {

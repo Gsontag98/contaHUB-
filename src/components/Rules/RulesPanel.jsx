@@ -84,7 +84,7 @@ export default function RulesPanel() {
     debitAccount: '',
     creditAccount: '',
     historicCode: '',
-    historicTextTemplate: '[HISTORICO]'
+    historicTextTemplate: ''
   };
 
   const [formState, setFormState] = useState(initialFormState);
@@ -1027,7 +1027,7 @@ export default function RulesPanel() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Ex: PAGAMENTO DARF [FORNECEDOR] REF [HISTORICO] - MES [MES]/[ANO]"
+                      placeholder="Clique nos trechos ou variáveis abaixo para montar..."
                       value={formState.historicTextTemplate}
                       onChange={(e) => setFormState(prev => ({ ...prev, historicTextTemplate: e.target.value }))}
                     />

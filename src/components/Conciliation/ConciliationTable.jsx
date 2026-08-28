@@ -101,7 +101,7 @@ export default function ConciliationTable() {
   const [quickRuleDebit, setQuickRuleDebit] = useState('');
   const [quickRuleCredit, setQuickRuleCredit] = useState('');
   const [quickRuleHistCode, setQuickRuleHistCode] = useState('');
-  const [quickRuleHistText, setQuickRuleHistText] = useState('[HISTORICO]');
+  const [quickRuleHistText, setQuickRuleHistText] = useState('');
 
   // Extract non-synthetic accounts from active chart of accounts
   const planoContas = useMemo(() => {
@@ -261,8 +261,8 @@ export default function ConciliationTable() {
     setQuickRuleTargetAccount(isDeb ? (tx.debitAccount || '') : (tx.creditAccount || ''));
     setQuickRuleDebit(tx.debitAccount || '');
     setQuickRuleCredit(tx.creditAccount || '');
-    setQuickRuleHistCode(tx.historicCode || '');
-    setQuickRuleHistText(tx.historicText || '[HISTORICO]');
+    setQuickRuleHistCode('');
+    setQuickRuleHistText('');
   };
 
   const addQuickRuleTerm = (term, group) => {
@@ -1267,6 +1267,7 @@ export default function ConciliationTable() {
                       <input
                         type="text"
                         className="form-input"
+                        placeholder="Opcional"
                         value={quickRuleHistCode}
                         onChange={(e) => setQuickRuleHistCode(e.target.value)}
                         style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}
@@ -1278,6 +1279,7 @@ export default function ConciliationTable() {
                       <input
                         type="text"
                         className="form-input"
+                        placeholder="Clique nos trechos ou variáveis abaixo para montar..."
                         value={quickRuleHistText}
                         onChange={(e) => setQuickRuleHistText(e.target.value)}
                       />
